@@ -54,7 +54,7 @@ export class TranscriptionService {
     const start = Date.now();
 
     // Resolve student's language preference for the hint
-    const context = this.studentsService.getContextProfile(dto.studentId);
+    const context = await this.studentsService.getContextProfile(dto.studentId);
     const languageHint = this.mapToWhisperLang(context.language as Language);
 
     let transcript: string;

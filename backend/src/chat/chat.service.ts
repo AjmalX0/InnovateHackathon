@@ -2,26 +2,28 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SendMessageDto, MessageType } from './dto/send-message.dto';
 import { StudentsService } from '../students/students.service';
+import { SupabaseService } from '../supabase/supabase.service';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ChatMessage {
   id: string;
   studentId: string;
   sessionId: string;
-  content: string;           // cleaned text ready for the AI pipeline
+  content: string;
   type: MessageType;
   inputLanguage: string;
   grade: number;
   gradeLabel: string;
   learningNeeds: string[];
   documentId?: string;
+  aiResponse?: string;
   timestamp: string;
 }
 
 export interface ChatResponse {
   messageId: string;
   sessionId: string;
-  receivedText: string;      // echo of clean text input
+  receivedText: string;
   studentContext: {
     grade: number;
     gradeLabel: string;
@@ -29,76 +31,64 @@ export interface ChatResponse {
     learningNeeds: string[];
   };
   status: 'queued' | 'processing' | 'ready';
-  aiResponse?: string;       // populated after AI pipeline (Step 3+)
+  aiResponse?: string;
 }
 
 /**
- * ChatService — Step 1 responsibility:
- *   Accept message → enrich with student context → produce a
- *   structured ChatMessage that the AI orchestrator will consume.
- *
- * In Step 3 this service will forward the ChatMessage to the
- * Python LangGraph service via HTTP and stream back the response.
+ * ChatService — persists every message to Supabase chat_messages.
+ * Step 3 will replace stubAiResponse with a real LangGraph call.
  */
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
 
-  // In-memory session store — replace with Redis/Supabase in prod
-  private readonly sessions = new Map<string, ChatMessage[]>();
-
   constructor(
     private readonly configService: ConfigService,
     private readonly studentsService: StudentsService,
+    private readonly supabase: SupabaseService,
   ) {}
 
-  /**
-   * Receive a message, attach student context, and return a
-   * structured payload. The AI call is a placeholder stub here
-   * (Step 3 will replace it with a real LangGraph call).
-   */
   async processMessage(dto: SendMessageDto): Promise<ChatResponse> {
-    // 1. Resolve student context
-    const context = this.studentsService.getContextProfile(dto.studentId);
+    // 1. Fetch student context from Supabase
+    const context = await this.studentsService.getContextProfile(dto.studentId);
 
-    // 2. Build session id (create new if not provided)
+    // 2. Session id — use provided or generate new
     const sessionId = dto.sessionId ?? uuidv4();
+    const cleanContent = this.sanitiseInput(dto.content);
+    const aiResponse = this.stubAiResponse(cleanContent, context.gradeLabel, dto.type);
 
-    // 3. Construct structured message
-    const message: ChatMessage = {
-      id: uuidv4(),
-      studentId: dto.studentId,
-      sessionId,
-      content: this.sanitiseInput(dto.content),
-      type: dto.type,
-      inputLanguage: dto.inputLanguage ?? 'auto',
-      grade: context.grade,
-      gradeLabel: context.gradeLabel,
-      learningNeeds: context.learningNeeds,
-      documentId: dto.documentId,
-      timestamp: new Date().toISOString(),
-    };
+    // 3. Persist to Supabase
+    const { data, error } = await this.supabase.db
+      .from('chat_messages')
+      .insert({
+        student_id:     dto.studentId,
+        session_id:     sessionId,
+        content:        cleanContent,
+        type:           dto.type,
+        input_language: dto.inputLanguage ?? 'auto',
+        grade:          context.grade,
+        grade_label:    context.gradeLabel,
+        learning_needs: context.learningNeeds,
+        document_id:    dto.documentId ?? null,
+        ai_response:    aiResponse,
+      })
+      .select()
+      .single();
 
-    // 4. Persist to session history
-    const history = this.sessions.get(sessionId) ?? [];
-    history.push(message);
-    this.sessions.set(sessionId, history);
+    if (error) throw new Error(error.message);
 
     this.logger.log(
-      `[${sessionId}] ${context.gradeLabel} student (${context.language}) → "${message.content.slice(0, 60)}…"`,
+      `[${sessionId}] ${context.gradeLabel} (${context.language}) → "${cleanContent.slice(0, 60)}…"`,
     );
 
-    // 5. Stub AI response — Step 3 replaces this with LangGraph call
-    const aiResponse = this.stubAiResponse(message);
-
     return {
-      messageId: message.id,
+      messageId: data.id,
       sessionId,
-      receivedText: message.content,
+      receivedText: cleanContent,
       studentContext: {
-        grade: context.grade,
-        gradeLabel: context.gradeLabel,
-        language: context.language,
+        grade:         context.grade,
+        gradeLabel:    context.gradeLabel,
+        language:      context.language,
         learningNeeds: context.learningNeeds,
       },
       status: 'ready',
@@ -106,28 +96,44 @@ export class ChatService {
     };
   }
 
-  /**
-   * Return session history for a given session id.
-   */
-  getSession(sessionId: string): ChatMessage[] {
-    return this.sessions.get(sessionId) ?? [];
+  async getSession(sessionId: string): Promise<ChatMessage[]> {
+    const { data, error } = await this.supabase.db
+      .from('chat_messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('timestamp', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => this.toMessage(r));
   }
 
-  /** Basic text sanitisation — trim, collapse whitespace. */
   private sanitiseInput(raw: string): string {
     return raw.trim().replace(/\s+/g, ' ');
   }
 
-  /**
-   * Stub response used until Step 3 (LangGraph) is wired in.
-   * Gives immediate UI feedback so Flutter can render the flow.
-   */
-  private stubAiResponse(msg: ChatMessage): string {
+  private stubAiResponse(content: string, gradeLabel: string, type: string): string {
     return (
-      `[STUB — ${msg.gradeLabel}] ` +
-      `Input received: "${msg.content.slice(0, 80)}" ` +
-      `(lang: ${msg.inputLanguage}, type: ${msg.type}). ` +
+      `[STUB — ${gradeLabel}] ` +
+      `Input received: "${content.slice(0, 80)}" ` +
+      `(type: ${type}). ` +
       `Real AI response will be injected in Step 3.`
     );
+  }
+
+  private toMessage(row: any): ChatMessage {
+    return {
+      id:            row.id,
+      studentId:     row.student_id,
+      sessionId:     row.session_id,
+      content:       row.content,
+      type:          row.type as MessageType,
+      inputLanguage: row.input_language,
+      grade:         row.grade,
+      gradeLabel:    row.grade_label,
+      learningNeeds: row.learning_needs ?? [],
+      documentId:    row.document_id,
+      aiResponse:    row.ai_response,
+      timestamp:     row.timestamp,
+    };
   }
 }

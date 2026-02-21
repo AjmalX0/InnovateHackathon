@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { CreateStudentDto, Grade, Language } from './dto/create-student.dto';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { CreateStudentDto, Language } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
-import { v4 as uuidv4 } from 'uuid';
+import { SupabaseService } from '../supabase/supabase.service';
 
 export interface StudentProfile {
   id: string;
@@ -14,80 +14,113 @@ export interface StudentProfile {
   updatedAt: string;
 }
 
-/**
- * StudentsService — manages student profiles.
- *
- * Currently uses an in-memory store so the app can run without
- * a database during the hackathon. Swap `store` for a Supabase
- * client call (or TypeORM entity) when connecting the DB.
- */
 @Injectable()
 export class StudentsService {
-  // In-memory store — replace with Supabase/TypeORM for production
-  private readonly store = new Map<string, StudentProfile>();
+  private readonly logger = new Logger(StudentsService.name);
 
-  create(dto: CreateStudentDto): StudentProfile {
-    const now = new Date().toISOString();
-    const student: StudentProfile = {
-      id: uuidv4(),
-      name: dto.name,
-      grade: dto.grade,
-      language: dto.language,
-      district: dto.district,
-      learningNeeds: dto.learningNeeds ?? [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.store.set(student.id, student);
-    return student;
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async create(dto: CreateStudentDto): Promise<StudentProfile> {
+    const { data, error } = await this.supabase.db
+      .from('students')
+      .insert({
+        name: dto.name,
+        grade: dto.grade,
+        language: dto.language,
+        district: dto.district ?? null,
+        learning_needs: dto.learningNeeds ?? [],
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return this.toProfile(data);
   }
 
-  findAll(): StudentProfile[] {
-    return Array.from(this.store.values());
+  async findAll(): Promise<StudentProfile[]> {
+    const { data, error } = await this.supabase.db
+      .from('students')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => this.toProfile(r));
   }
 
-  findOne(id: string): StudentProfile {
-    const student = this.store.get(id);
-    if (!student) {
+  async findOne(id: string): Promise<StudentProfile> {
+    const { data, error } = await this.supabase.db
+      .from('students')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
       throw new NotFoundException(`Student with id "${id}" not found`);
     }
-    return student;
+    return this.toProfile(data);
   }
 
-  update(id: string, dto: UpdateStudentDto): StudentProfile {
-    const existing = this.findOne(id);
-    const updated: StudentProfile = {
-      ...existing,
-      ...dto,
-      learningNeeds: dto.learningNeeds ?? existing.learningNeeds,
-      updatedAt: new Date().toISOString(),
-    };
-    this.store.set(id, updated);
-    return updated;
+  async update(id: string, dto: UpdateStudentDto): Promise<StudentProfile> {
+    await this.findOne(id); // throws 404 if not found
+
+    const { data, error } = await this.supabase.db
+      .from('students')
+      .update({
+        ...(dto.name     !== undefined && { name: dto.name }),
+        ...(dto.grade    !== undefined && { grade: dto.grade }),
+        ...(dto.language !== undefined && { language: dto.language }),
+        ...(dto.district !== undefined && { district: dto.district }),
+        ...(dto.learningNeeds !== undefined && { learning_needs: dto.learningNeeds }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return this.toProfile(data);
   }
 
-  remove(id: string): { deleted: boolean } {
-    this.findOne(id); // throws if not found
-    this.store.delete(id);
+  async remove(id: string): Promise<{ deleted: boolean }> {
+    await this.findOne(id); // throws 404 if not found
+
+    const { error } = await this.supabase.db
+      .from('students')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw new Error(error.message);
     return { deleted: true };
   }
 
   /**
-   * Returns a compact profile object used by the AI orchestrator
-   * to personalise responses (grade-level, language preference, needs).
+   * Compact profile consumed by the LangGraph orchestrator.
    */
-  getContextProfile(id: string): {
+  async getContextProfile(id: string): Promise<{
     grade: number;
     language: Language;
     learningNeeds: string[];
     gradeLabel: string;
-  } {
-    const student = this.findOne(id);
+  }> {
+    const student = await this.findOne(id);
     return {
       grade: student.grade,
       language: student.language,
       learningNeeds: student.learningNeeds,
       gradeLabel: `Class ${student.grade}`,
+    };
+  }
+
+  private toProfile(row: any): StudentProfile {
+    return {
+      id: row.id,
+      name: row.name,
+      grade: row.grade,
+      language: row.language as Language,
+      district: row.district,
+      learningNeeds: row.learning_needs ?? [],
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     };
   }
 }
