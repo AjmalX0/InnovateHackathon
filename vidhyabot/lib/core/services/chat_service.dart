@@ -1,12 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
+import 'translation_service.dart';
 
 // ---------------------------------------------------------------------------
 // IMPORTANT: Replace this with your own Gemini API key or move it to a
 // secure location (e.g., --dart-define, environment variable, etc.).
 // ---------------------------------------------------------------------------
-const _geminiApiKey = 'AIzaSyD1052iYbf48BIpOI7oRpqLQhx1bPKaKKY';
+const _geminiApiKey = 'AIzaSyAejE7yVwhA0h7uzRciLQMvU5zZNiPXHYw';
 
 const _qwenModelUrl =
     'https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/'
@@ -14,10 +15,13 @@ const _qwenModelUrl =
 
 /// Wraps both the online Gemini API and the on-device Qwen2.5 model.
 ///
+/// Malayalam input is silently translated to English before being sent to
+/// the AI, and the English response is silently translated back to Malayalam.
+///
 /// Usage:
 /// ```dart
 /// final svc = ChatService(contextHint: 'Chapter: Photosynthesis');
-/// svc.init();                       // starts local-model download in bg
+/// svc.init();
 /// await for (final tok in svc.sendMessage('What is ATP?', isOnline: true)) {
 ///   // accumulate token
 /// }
@@ -111,35 +115,75 @@ class ChatService {
 
   /// Send a message and receive a stream of response tokens.
   ///
-  /// [isOnline] – true  → Gemini cloud
-  ///              false → local model (if loaded)
+  /// **Online**  – Malayalam input is translated to English via MyMemory API,
+  ///               the English AI response is translated back to Malayalam,
+  ///               then yielded as a single string.
+  ///
+  /// **Offline** – The 0.5B local model is too small to reliably translate;
+  ///               instead we wrap the Malayalam text in an English instruction
+  ///               prompt so the model understands the intent and replies in
+  ///               English. The response is yielded token-by-token.
   Stream<String> sendMessage(String text, {required bool isOnline}) async* {
+    final bool wasMalayalam = TranslationService.isMalayalam(text);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ONLINE PATH
+    // ─────────────────────────────────────────────────────────────────────────
     if (isOnline) {
-      // --- Online: Gemini streaming ---
+      // 1. Translate Malayalam → English (no-op for English input)
+      final String queryText = wasMalayalam
+          ? await TranslationService.mlToEn(text)
+          : text;
+
+      // 2. Stream Gemini response
+      final StringBuffer fullResponse = StringBuffer();
       try {
-        final stream = _geminiChat.sendMessageStream(Content.text(text));
+        final stream = _geminiChat.sendMessageStream(Content.text(queryText));
         await for (final chunk in stream) {
-          if (chunk.text != null) yield chunk.text!;
+          if (chunk.text != null) fullResponse.write(chunk.text!);
         }
       } catch (e) {
-        yield 'Gemini error: $e';
+        fullResponse.write('Gemini error: $e');
       }
-    } else {
-      // --- Offline: local Gemma streaming ---
-      if (!_isLocalModelLoaded || _gemmaChat == null) {
-        yield _isDownloading
-            ? "I'm offline and the local AI model is still downloading ($_downloadStatus). Please wait or reconnect."
-            : "I'm offline and the local AI model isn't ready. Please reconnect to use AI.";
-        return;
+
+      // 3. Translate English response → Malayalam if needed
+      final String responseText = fullResponse.toString();
+      if (wasMalayalam && responseText.isNotEmpty) {
+        yield await TranslationService.enToMl(responseText);
+      } else {
+        yield responseText;
       }
-      try {
-        await _gemmaChat!.addQueryChunk(Message.text(text: text, isUser: true));
-        await for (final response in _gemmaChat!.generateChatResponseAsync()) {
-          if (response is TextResponse) yield response.token;
-        }
-      } catch (e) {
-        yield 'Local AI error: $e';
+      return;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // OFFLINE PATH
+    // ─────────────────────────────────────────────────────────────────────────
+    if (!_isLocalModelLoaded || _gemmaChat == null) {
+      yield _isDownloading
+          ? 'Offline: local AI is still downloading ($_downloadStatus). Please wait or reconnect.'
+          : "Offline: local AI isn't ready. Please reconnect to use AI.";
+      return;
+    }
+
+    // The local 0.5B model has no Malayalam vocabulary in its tokenizer —
+    // sending Malayalam Unicode produces garbage tokens → confused responses.
+    // We detect this early and give a clear, honest message instead.
+    if (wasMalayalam) {
+      yield 'മലയാളം ഓഫ്‌ലൈൻ മോഡിൽ പിന്തുണയ്ക്കുന്നില്ല. '
+          'ദയവായി ഇംഗ്ലീഷിൽ ടൈപ്പ് ചെയ്യുക അല്ലെങ്കിൽ ഇൻ്റർനെറ്റ് ബന്ധിപ്പിക്കുക.\n\n'
+          '(Offline mode does not support Malayalam. '
+          'Please type in English or connect to the internet.)';
+      return;
+    }
+
+    try {
+      await _gemmaChat!.addQueryChunk(Message.text(text: text, isUser: true));
+      await for (final response in _gemmaChat!.generateChatResponseAsync()) {
+        if (response is TextResponse) yield response.token;
       }
+    } catch (e) {
+      yield 'Local AI error: $e';
     }
   }
 
