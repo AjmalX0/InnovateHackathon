@@ -3,6 +3,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/model/student_create_request.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/app_session.dart';
+import '../../core/utils/error_handler.dart';
 import '../main/main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -126,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } catch (error) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create profile: $error')),
+          SnackBar(content: Text(ErrorHandler.getUserMessage(error))),
         );
       } finally {
         if (mounted) setState(() => _isSubmitting = false);

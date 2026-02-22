@@ -23,7 +23,7 @@ class VidhyaBotApp extends StatelessWidget {
       // Route to MainScreen if already logged in, else LoginScreen
       home: AppSession.instance.isLoggedIn
           ? const MainScreen()
-          : const MainScreen(),
+          : const LoginScreen(),
     );
   }
 }

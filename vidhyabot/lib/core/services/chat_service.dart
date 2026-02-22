@@ -7,7 +7,7 @@ import 'translation_service.dart';
 // IMPORTANT: Replace this with your own Gemini API key or move it to a
 // secure location (e.g., --dart-define, environment variable, etc.).
 // ---------------------------------------------------------------------------
-const _geminiApiKey = 'AIzaSyDLzrKAuQ5NA4kCrrGom5I7I-5wMkoZdS4';
+const _geminiApiKey = 'AIzaSyC-S5fs7txB5vXzMCOFw_ZGTj2Jc2fuEH4';
 
 const _qwenModelUrl =
     'https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/'
@@ -72,6 +72,12 @@ class ChatService {
       model: 'gemini-2.5-flash',
       apiKey: _geminiApiKey,
       systemInstruction: systemInstruction,
+      safetySettings: [
+        SafetySetting(HarmCategory.harassment, HarmBlockThreshold.low),
+        SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.low),
+        SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.low),
+        SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.low),
+      ],
     );
     _geminiChat = _geminiModel.startChat();
 
@@ -184,6 +190,83 @@ class ChatService {
       }
     } catch (e) {
       yield 'Local AI error: $e';
+    }
+  }
+
+  /// Simplifies a verbose Malayalam lesson into a grade-appropriate explanation.
+  /// If [targetLanguage] is 'en', it translates the Malayalam input to English first,
+  /// asks the AI to simplify in English, and yields the English response.
+  /// If it is 'ml', it prompts the AI to simplify in English, and translates
+  /// the English chunks back to Malayalam streamingly (or in bulk).
+  Stream<String> simplifyLesson(
+    String rawLessonMalayalam, {
+    required String targetLanguage,
+    required int grade,
+    required bool isOnline,
+  }) async* {
+    if (!isOnline && (!_isLocalModelLoaded || _gemmaChat == null)) {
+      yield 'Offline AI is not ready. Please connect to the internet or try again later.';
+      return;
+    }
+
+    // 1. Convert the raw Malayalam prompt to English so the AI understands
+    //    precisely what we want, since LLMs (especially local ones) reason
+    //    better in English.
+    final rawLessonEnglish = await TranslationService.mlToEn(
+      rawLessonMalayalam,
+    );
+
+    // 2. Build the exact simplification prompt.
+    final prompt =
+        '''
+      You are an expert tutor. Please simplify and explain the following lesson content 
+      so that a Grade $grade student can easily understand it. Use simple, engaging words. 
+      Do not output any markdown formatting, just plain text.
+      
+      Lesson Content:
+      $rawLessonEnglish
+    ''';
+
+    // 3. Get the simplified English response from the AI.
+    final StringBuffer engResponseBuffer = StringBuffer();
+
+    if (isOnline) {
+      try {
+        final stream = _geminiChat.sendMessageStream(Content.text(prompt));
+        await for (final chunk in stream) {
+          if (chunk.text != null) engResponseBuffer.write(chunk.text!);
+        }
+      } catch (e) {
+        engResponseBuffer.write('Gemini error while simplifying: $e');
+      }
+    } else {
+      try {
+        await _gemmaChat!.addQueryChunk(
+          Message.text(text: prompt, isUser: true),
+        );
+        await for (final response in _gemmaChat!.generateChatResponseAsync()) {
+          if (response is TextResponse) engResponseBuffer.write(response.token);
+        }
+      } catch (e) {
+        engResponseBuffer.write('Local AI error while simplifying: $e');
+      }
+    }
+
+    final String finalEnglish = engResponseBuffer.toString().trim();
+
+    // 4. Translate back to Malayalam if that was the requested language,
+    //    otherwise yield the English final result.
+    if (targetLanguage == 'ml') {
+      try {
+        final mlTranslation = await TranslationService.enToMl(finalEnglish);
+        // We yield it all at once because the Translation API doesn't stream.
+        // For a more advanced architecture we could stream chunk-by-chunk translation.
+        yield mlTranslation;
+      } catch (e) {
+        yield finalEnglish; // fallback to English if translation fails
+      }
+    } else {
+      yield finalEnglish;
     }
   }
 

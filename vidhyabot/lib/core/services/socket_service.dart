@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../constants/api_constants.dart';
 
@@ -84,45 +85,95 @@ class SocketService {
 
   // ─── ask_doubt ─────────────────────────────────────────────────────────────
 
-  /// Emits `ask_doubt` and returns a stream of AI response tokens.
-  Stream<String> askDoubt({
+  /// Emits `ask_doubt` and resolves when the server fires `doubt_answered`.
+  ///
+  /// For text doubts  → set [inputType] = `'text'` and [text].
+  /// For voice doubts → set [inputType] = `'voice'` and [audioBase64].
+  ///
+  /// Returns a `Map` with keys:
+  ///   `answer`, `simple_analogy`, `encouragement`, `messageId`, `fromCache`
+  Future<Map<String, dynamic>> askDoubt({
     required String studentId,
-    required String doubt,
     required String subject,
     required String chapter,
-  }) {
-    final controller = StreamController<String>();
+    required String inputType, // 'text' | 'voice'
+    String? text,
+    String? audioBase64,
+  }) async {
+    assert(
+      (inputType == 'text' && text != null) ||
+          (inputType == 'voice' && audioBase64 != null),
+      'Provide text for inputType=text or audioBase64 for inputType=voice',
+    );
 
     connect();
 
-    _socket!.off(ApiConstants.evtDoubtResponse);
+    final completer = Completer<Map<String, dynamic>>();
+
+    // Remove stale listeners
+    _socket!.off(ApiConstants.evtDoubtAnswered);
     _socket!.off(ApiConstants.evtError);
 
-    _socket!.on(ApiConstants.evtDoubtResponse, (data) {
-      if (controller.isClosed) return;
-      final text = _extractText(data);
-      if (text != null) controller.add(text);
-      if (_isDone(data)) {
-        controller.close();
-        _socket!.off(ApiConstants.evtDoubtResponse);
+    // Listen for the single response event
+    _socket!.once(ApiConstants.evtDoubtAnswered, (data) {
+      if (completer.isCompleted) return;
+      _socket!.off(ApiConstants.evtError);
+
+      if (data is Map) {
+        final response = data['response'];
+        if (response is Map) {
+          completer.complete({
+            'messageId': data['messageId'],
+            'fromCache': data['fromCache'] ?? false,
+            'answer': response['answer'] ?? '',
+            'simple_analogy': response['simple_analogy'] ?? '',
+            'encouragement': response['encouragement'] ?? '',
+          });
+          return;
+        }
+      }
+      // Fallback: treat entire data as answer string
+      completer.complete({
+        'answer': _extractText(data) ?? 'No response received.',
+        'simple_analogy': '',
+        'encouragement': '',
+        'fromCache': false,
+      });
+    });
+
+    _socket!.once(ApiConstants.evtError, (data) {
+      debugPrint('🔴 SocketService.askDoubt evtError received: $data');
+      if (!completer.isCompleted) {
+        completer.completeError(
+          Exception(_extractText(data) ?? 'Socket error: $data'),
+        );
       }
     });
 
-    _socket!.on(ApiConstants.evtError, (data) {
-      if (!controller.isClosed) {
-        controller.addError(Exception(_extractText(data) ?? 'Socket error'));
-        controller.close();
-      }
+    _socket!.once('connect_error', (data) {
+      debugPrint('🔴 SocketService.askDoubt connect_error: $data');
+    });
+    _socket!.once('disconnect', (data) {
+      debugPrint('🔴 SocketService.askDoubt disconnect: $data');
     });
 
-    _socket!.emit(ApiConstants.evtAskDoubt, {
+    // Build and emit payload
+    final payload = <String, dynamic>{
       'studentId': studentId,
-      'doubt': doubt,
       'subject': subject,
       'chapter': chapter,
-    });
+      'inputType': inputType,
+    };
+    if (inputType == 'text') payload['text'] = text;
+    if (inputType == 'voice') payload['audioBase64'] = audioBase64;
 
-    return controller.stream;
+    _socket!.emit(ApiConstants.evtAskDoubt, payload);
+
+    // 30-second timeout guard
+    return completer.future.timeout(
+      const Duration(seconds: 30),
+      onTimeout: () => throw Exception('No response from server (timeout).'),
+    );
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────

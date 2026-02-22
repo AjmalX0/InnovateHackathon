@@ -112,11 +112,31 @@ class TextToSpeechService {
   /// lang to 'ml-IN', otherwise 'en-IN'.
   Future<void> speakAuto(String text) async {
     if (!_isAvailable || text.trim().isEmpty) return;
-    final isMalayalam = RegExp(r'[\u0D00-\u0D7F]').hasMatch(text);
+
+    final cleanText = _cleanTextForSpeech(text);
+    if (cleanText.isEmpty) return;
+
+    final isMalayalam = RegExp(r'[\u0D00-\u0D7F]').hasMatch(cleanText);
     try {
       await _tts.setLanguage(isMalayalam ? 'ml-IN' : 'en-IN');
     } catch (_) {}
-    await _tts.speak(text);
+    await _tts.speak(cleanText);
+  }
+
+  /// Removes emojis and markdown-like special characters
+  /// that don't sound good when read by a screen reader.
+  String _cleanTextForSpeech(String text) {
+    // 1. Remove emojis (covers most common emoji blocks)
+    var cleaned = text.replaceAll(
+      RegExp(
+        r'[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]',
+        unicode: true,
+      ),
+      '',
+    );
+    // 2. Remove markdown asterisks, hashes, backticks, dashes at start of lines, etc.
+    cleaned = cleaned.replaceAll(RegExp(r'[*#`~_]'), '');
+    return cleaned.trim();
   }
 
   Future<void> stop() {

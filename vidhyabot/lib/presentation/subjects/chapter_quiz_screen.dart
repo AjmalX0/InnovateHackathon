@@ -1,11 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/models/subject_model.dart';
+import '../../core/services/app_session.dart';
+import '../widgets/bouncy_button.dart';
 
 class ChapterQuizScreen extends StatefulWidget {
-  final ChapterModel chapter;
+  final String chapterTitle;
 
-  const ChapterQuizScreen({super.key, required this.chapter});
+  const ChapterQuizScreen({super.key, required this.chapterTitle});
 
   @override
   State<ChapterQuizScreen> createState() => _ChapterQuizScreenState();
@@ -14,30 +16,31 @@ class ChapterQuizScreen extends StatefulWidget {
 class _ChapterQuizScreenState extends State<ChapterQuizScreen> {
   int _currentQuestionIndex = 0;
   int? _selectedOptionIndex;
-  bool _isFinished = false;
+  bool _isAnswerRevealed = false;
   int _score = 0;
+  bool _quizCompleted = false;
+  bool _pointsAwarded = false;
 
-  // Generic dummy questions that apply to the given chapter
   late final List<Map<String, dynamic>> _dummyQuestions;
 
   @override
   void initState() {
     super.initState();
-    // In a real app, these questions would come from the ChapterModel or an API
     _dummyQuestions = [
       {
-        'question': 'What is the main objective of ${widget.chapter.title}?',
+        'question':
+            'What is the primary purpose of learning ${widget.chapterTitle}?',
         'options': [
           'To understand the core concepts',
           'To memorize dates',
           'To write essays',
           'To skip to the next chapter',
         ],
-        'answerIndex': 0, // 'To understand the core concepts'
+        'answerIndex': 0,
       },
       {
         'question':
-            'Which of the following is a key topic in ${widget.chapter.title}?',
+            'Which of the following is a key topic in ${widget.chapterTitle}?',
         'options': [
           'Subject matter A',
           'Topic B as introduced in the text',
@@ -47,7 +50,7 @@ class _ChapterQuizScreenState extends State<ChapterQuizScreen> {
         'answerIndex': 1,
       },
       {
-        'question': 'How does ${widget.chapter.title} apply to real life?',
+        'question': 'How does ${widget.chapterTitle} apply to real life?',
         'options': [
           'It doesn\'t',
           'Practical problem solving',
@@ -59,28 +62,40 @@ class _ChapterQuizScreenState extends State<ChapterQuizScreen> {
     ];
   }
 
-  void _nextQuestion() {
-    if (_selectedOptionIndex == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please select an option')));
-      return;
-    }
+  void _onOptionSelected(int index) {
+    if (_isAnswerRevealed || _quizCompleted) return;
 
-    if (_selectedOptionIndex ==
-        _dummyQuestions[_currentQuestionIndex]['answerIndex']) {
-      _score++;
-    }
+    setState(() {
+      _selectedOptionIndex = index;
+      _isAnswerRevealed = true;
+      if (index == _dummyQuestions[_currentQuestionIndex]['answerIndex']) {
+        _score++;
+      }
+    });
 
-    if (_currentQuestionIndex < _dummyQuestions.length - 1) {
-      setState(() {
-        _currentQuestionIndex++;
-        _selectedOptionIndex = null;
-      });
-    } else {
-      setState(() {
-        _isFinished = true;
-      });
+    // Auto-advance after showing the colors
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (!mounted) return;
+      if (_currentQuestionIndex < _dummyQuestions.length - 1) {
+        setState(() {
+          _currentQuestionIndex++;
+          _selectedOptionIndex = null;
+          _isAnswerRevealed = false;
+        });
+      } else {
+        setState(() {
+          _quizCompleted = true;
+          _awardPointsIfPassed();
+        });
+      }
+    });
+  }
+
+  void _awardPointsIfPassed() {
+    final passed = _score >= (_dummyQuestions.length / 2);
+    if (passed && !_pointsAwarded) {
+      _pointsAwarded = true;
+      AppSession.instance.addPoints(50);
     }
   }
 
@@ -88,70 +103,102 @@ class _ChapterQuizScreenState extends State<ChapterQuizScreen> {
     setState(() {
       _currentQuestionIndex = 0;
       _selectedOptionIndex = null;
-      _isFinished = false;
+      _isAnswerRevealed = false;
       _score = 0;
+      _quizCompleted = false;
+      _pointsAwarded = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isFinished) {
-      final double percentage = _score / _dummyQuestions.length;
-      final bool passed = percentage >= 0.5;
+    if (_quizCompleted) {
+      final passed = _score >= (_dummyQuestions.length / 2);
 
       return Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading:
-              false, // Clean UI without back arrow as requested
-          title: const Text(
-            'Quiz Results',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
+        backgroundColor: passed
+            ? const Color(0xFFF0FDF4)
+            : const Color(0xFFFEF2F2),
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(32.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  passed ? Icons.emoji_events : Icons.sentiment_dissatisfied,
+                  passed
+                      ? Icons.emoji_events_rounded
+                      : Icons.sentiment_dissatisfied_rounded,
                   size: 100,
-                  color: passed ? AppColors.success : AppColors.error,
+                  color: passed ? Colors.amber : Colors.grey,
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'Score: $_score / ${_dummyQuestions.length}',
+                  passed ? 'Awesome Job!' : 'Keep Trying!',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primaryDark,
+                    fontWeight: FontWeight.w900,
+                    color: passed ? Colors.green.shade800 : Colors.red.shade800,
+                    letterSpacing: -1,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Text(
-                  passed
-                      ? 'Great job! You have a good understanding of ${widget.chapter.title}.'
-                      : 'You might want to review ${widget.chapter.title} again.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16, color: Colors.black54),
+                  'Score: $_score / ${_dummyQuestions.length}',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
                 ),
+                const SizedBox(height: 24),
+
+                if (passed)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.amber, width: 2),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.star_rounded, color: Colors.amber, size: 28),
+                        SizedBox(width: 8),
+                        Text(
+                          '+50 Points!',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 const SizedBox(height: 48),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _retakeQuiz,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Retake Quiz'),
-                    ),
-                    const SizedBox(width: 16),
-                    OutlinedButton(
-                      // We must use pop since we removed automaticallyImplyLeading
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Back to Chapter'),
-                    ),
-                  ],
+                BouncyButton(
+                  label: passed ? 'Back to Journey' : 'Try Again',
+                  onTap: () {
+                    if (passed) {
+                      Navigator.pop(context);
+                    } else {
+                      _retakeQuiz();
+                    }
+                  },
                 ),
+                if (passed) ...[
+                  const SizedBox(height: 16),
+                  BouncyButton(
+                    label: 'Retake Quiz',
+                    isSecondary: true,
+                    onTap: _retakeQuiz,
+                  ),
+                ],
               ],
             ),
           ),
@@ -160,131 +207,107 @@ class _ChapterQuizScreenState extends State<ChapterQuizScreen> {
     }
 
     final questionData = _dummyQuestions[_currentQuestionIndex];
+    final correctIndex = questionData['answerIndex'] as int;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
-        // Retain standard style, but we need a back button if they want to exit mid-quiz
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: const Icon(Icons.close_rounded, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'Quiz: ${widget.chapter.title}',
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-            letterSpacing: -0.5,
-          ),
+        title: LinearProgressIndicator(
+          value: (_currentQuestionIndex + 1) / _dummyQuestions.length,
+          backgroundColor: Colors.grey.shade300,
+          color: AppColors.primary,
+          minHeight: 12,
+          borderRadius: BorderRadius.circular(6),
         ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        toolbarHeight: 70, // Slightly taller for breathing room
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Progress Bar
-            LinearProgressIndicator(
-              value: (_currentQuestionIndex + 1) / _dummyQuestions.length,
-              backgroundColor: AppColors.primaryLight.withOpacity(0.2),
-              color: AppColors.primary,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            const SizedBox(height: 32),
-
-            // Question Box
-            Text(
-              'Question ${_currentQuestionIndex + 1} of ${_dummyQuestions.length}',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.bold,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Question ${_currentQuestionIndex + 1} of ${_dummyQuestions.length}',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  letterSpacing: 1,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              questionData['question'],
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.onSurface,
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Options
-            Expanded(
-              child: ListView.separated(
-                itemCount: (questionData['options'] as List<String>).length,
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: 16),
-                itemBuilder: (context, index) {
-                  final option = questionData['options'][index];
-                  final isSelected = _selectedOptionIndex == index;
-
-                  return InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedOptionIndex = index;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primaryLight.withOpacity(0.1)
-                            : AppColors.surface,
-                        border: Border.all(
-                          color: isSelected
-                              ? AppColors.primary
-                              : Colors.grey.shade300,
-                          width: isSelected ? 2 : 1,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isSelected
-                                ? Icons.radio_button_checked
-                                : Icons.radio_button_unchecked,
-                            color: isSelected ? AppColors.primary : Colors.grey,
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Text(
-                              option,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: isSelected
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: isSelected
-                                    ? AppColors.primaryDark
-                                    : AppColors.onSurface,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+              const SizedBox(height: 12),
+              Expanded(
+                flex: 2,
+                child: SingleChildScrollView(
+                  child: Text(
+                    questionData['question'],
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.primaryDark,
+                      height: 1.3,
+                      letterSpacing: -0.5,
                     ),
-                  );
-                },
+                  ),
+                ),
               ),
-            ),
 
-            // Next Button
-            ElevatedButton(
-              onPressed: _nextQuestion,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+              // Options
+              Expanded(
+                flex: 5,
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: (questionData['options'] as List<String>)
+                        .asMap()
+                        .entries
+                        .map((entry) {
+                          final index = entry.key;
+                          final txt = entry.value;
+
+                          final isSelected = _selectedOptionIndex == index;
+                          final isCorrect = index == correctIndex;
+
+                          bool isSecondary = true;
+                          Color baseColor = AppColors.primary;
+                          Color? outlineColor;
+
+                          if (_isAnswerRevealed) {
+                            if (isCorrect) {
+                              isSecondary = false;
+                              baseColor = const Color(0xFF43E97B); // Green
+                            } else if (isSelected && !isCorrect) {
+                              isSecondary = false;
+                              baseColor = const Color(0xFFFF6B6B); // Red
+                            }
+                          } else if (isSelected) {
+                            outlineColor = AppColors.primary;
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 20.0),
+                            child: BouncyButton(
+                              label: txt,
+                              isSecondary: isSecondary,
+                              baseColor: baseColor,
+                              outlineColor: outlineColor,
+                              onTap: () => _onOptionSelected(index),
+                            ),
+                          );
+                        })
+                        .toList(),
+                  ),
+                ),
               ),
-              child: Text(
-                _currentQuestionIndex == _dummyQuestions.length - 1
-                    ? 'Finish Quiz'
-                    : 'Next Question',
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

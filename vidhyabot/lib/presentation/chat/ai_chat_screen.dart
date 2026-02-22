@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/chat_service.dart';
 import '../../core/services/text_to_speech_service.dart';
+import '../../core/utils/error_handler.dart';
 
 class _ChatMessage {
   final String text;
@@ -127,7 +128,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _messages[aiIndex] = _ChatMessage(text: 'Error: $e', isUser: false);
+          _messages[aiIndex] = _ChatMessage(
+            text: ErrorHandler.getUserMessage(e),
+            isUser: false,
+          );
         });
       }
     } finally {
@@ -189,24 +193,28 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    color: isUser ? AppColors.primary : Colors.grey.shade100,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(20),
-                      topRight: const Radius.circular(20),
+                    color: isUser ? AppColors.primary : Colors.white,
+                    border: Border.all(
+                      color: isUser
+                          ? AppColors.primaryDark.withValues(alpha: 0.5)
+                          : Colors.grey.shade200,
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(24).copyWith(
                       bottomLeft: isUser
-                          ? const Radius.circular(20)
-                          : const Radius.circular(4),
+                          ? const Radius.circular(24)
+                          : const Radius.circular(8),
                       bottomRight: isUser
-                          ? const Radius.circular(4)
-                          : const Radius.circular(20),
+                          ? const Radius.circular(8)
+                          : const Radius.circular(24),
                     ),
                     boxShadow: [
-                      if (!isUser)
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
+                      BoxShadow(
+                        color: isUser
+                            ? AppColors.primaryDark.withValues(alpha: 0.5)
+                            : Colors.grey.shade200,
+                        offset: const Offset(0, 4),
+                      ),
                     ],
                   ),
                   child: showTypingDots
