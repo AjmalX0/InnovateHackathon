@@ -12,6 +12,7 @@ import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { TeachingService } from '../modules/teaching/teaching.service';
 import { ChatService } from '../modules/chat/chat.service';
+import { CapabilityService } from '../modules/capability/capability.service';
 import { IsString, IsUUID, IsEnum, IsOptional, validateSync } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
@@ -48,6 +49,17 @@ class AskDoubtPayload {
     inputType: 'voice' | 'text';
 }
 
+class SimplifyPayload {
+    @IsUUID()
+    studentId: string;
+
+    @IsString()
+    subject: string;
+
+    @IsString()
+    chapter: string;
+}
+
 @WebSocketGateway({
     cors: {
         origin: '*',
@@ -65,6 +77,7 @@ export class VidyabotGateway
     constructor(
         private readonly teachingService: TeachingService,
         private readonly chatService: ChatService,
+        private readonly capabilityService: CapabilityService,
     ) { }
 
     afterInit(): void {
@@ -163,6 +176,66 @@ export class VidyabotGateway
             this.logger.error(`[ask_doubt] Error: ${err.message}`);
             client.emit('error', {
                 event: 'ask_doubt',
+                message: err.message,
+            });
+        }
+    }
+
+    /**
+     * Emitted by frontend when the student taps the "Simplify" button.
+     *
+     * Flow:
+     *  1. Record penalty in CapabilityService (drops score by 10)
+     *  2. Re-run teaching session — cluster may now be lower (HIGH→MEDIUM, MEDIUM→LOW)
+     *  3. Emit `lesson_started` back with simplified content
+     *
+     * Frontend payload: { studentId, subject, chapter }
+     */
+    @SubscribeMessage('simplify_requested')
+    async handleSimplify(
+        @MessageBody() data: SimplifyPayload,
+        @ConnectedSocket() client: Socket,
+    ): Promise<void> {
+        const payload = plainToInstance(SimplifyPayload, data);
+        const errors = validateSync(payload);
+
+        if (errors.length > 0) {
+            client.emit('error', {
+                event: 'simplify_requested',
+                message: 'Invalid payload',
+                details: errors.map((e) => Object.values(e.constraints ?? {})).flat(),
+            });
+            return;
+        }
+
+        try {
+            // 1. Record the simplify click — decreases the student's score by SIMPLIFY_PENALTY
+            this.capabilityService.recordSimplify(payload.studentId);
+            const penalty = this.capabilityService.getSimplifyPenalty(payload.studentId);
+            this.logger.log(
+                `[simplify_requested] studentId=${payload.studentId} totalPenalty=${penalty}`,
+            );
+
+            // 2. Re-run teaching session with the updated (lower) capability score
+            const result = await this.teachingService.startTeachingSession(
+                payload.studentId,
+                payload.subject,
+                payload.chapter,
+            );
+
+            // 3. Return simplified lesson to client
+            client.emit('lesson_started', {
+                blockId: result.block.id,
+                fromCache: result.fromCache,
+                content: result.content,
+                simplified: true,
+                simplifyPenaltyApplied: penalty,
+            });
+        } catch (error) {
+            const err = error as Error;
+            this.logger.error(`[simplify_requested] Error: ${err.message}`);
+            client.emit('error', {
+                event: 'simplify_requested',
                 message: err.message,
             });
         }
