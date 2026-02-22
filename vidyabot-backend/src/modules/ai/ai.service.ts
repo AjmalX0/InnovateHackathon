@@ -31,7 +31,7 @@ export class AiService {
         }
         const genAI = new GoogleGenerativeAI(apiKey);
         this.genAI = genAI;
-        this.model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-05-20' });
+        this.model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
         this.embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
     }
 
