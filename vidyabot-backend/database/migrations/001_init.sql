@@ -93,6 +93,45 @@ CREATE EXTENSION IF NOT EXISTS vector;
 ALTER TABLE syllabus_chunks ADD COLUMN IF NOT EXISTS embedding vector(768);
 
 -- Create Supabase RPC Stored Procedure for Pure Supabase JS RAG Search
+-- ============================================
+-- Table: subject_catalog
+-- Stores the official list of subjects per grade.
+-- These are registered by admins upfront; students browse this list.
+-- ============================================
+CREATE TABLE IF NOT EXISTS subject_catalog (
+    id           UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    grade        INTEGER      NOT NULL CHECK (grade >= 1 AND grade <= 12),
+    subject      VARCHAR(100) NOT NULL,
+    display_name VARCHAR(200) NOT NULL,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (grade, subject)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subject_catalog_grade
+    ON subject_catalog (grade);
+
+-- ============================================
+-- Table: chapter_catalog
+-- Stores the ordered list of chapters per grade+subject.
+-- Registered by admins; used in the student subject/chapter picker.
+-- ============================================
+CREATE TABLE IF NOT EXISTS chapter_catalog (
+    id            UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    grade         INTEGER      NOT NULL CHECK (grade >= 1 AND grade <= 12),
+    subject       VARCHAR(100) NOT NULL,
+    chapter       VARCHAR(200) NOT NULL,
+    display_name  VARCHAR(300) NOT NULL,
+    chapter_order INTEGER      NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (grade, subject, chapter)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chapter_catalog_lookup
+    ON chapter_catalog (grade, subject, chapter_order);
+
+-- ============================================
+-- Vector Embeddings for Syllabus Chunks (RAG)
+-- ============================================
 CREATE OR REPLACE FUNCTION match_syllabus_chunks (
   query_embedding vector(768),
   match_grade int,

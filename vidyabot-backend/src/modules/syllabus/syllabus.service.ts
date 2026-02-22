@@ -1,6 +1,10 @@
-import { Injectable, Logger, Inject, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, Inject, InternalServerErrorException, ConflictException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SyllabusChunk } from './entities/syllabus-chunk.entity';
+import { SubjectCatalog } from './entities/subject-catalog.entity';
+import { ChapterCatalog } from './entities/chapter-catalog.entity';
+import { AddSubjectDto } from './dto/add-subject.dto';
+import { AddChapterDto } from './dto/add-chapter.dto';
 import { AiService } from '../ai/ai.service';
 import * as pdfParse from 'pdf-parse';
 
@@ -12,6 +16,151 @@ export class SyllabusService {
         @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
         private readonly aiService: AiService,
     ) { }
+
+    // ─── Catalog: Subject Management ────────────────────────────────────────
+
+    async addSubjectToCatalog(dto: AddSubjectDto): Promise<SubjectCatalog> {
+        const { data, error } = await this.supabase
+            .from('subject_catalog')
+            .insert({
+                grade: dto.grade,
+                subject: dto.subject.trim().toLowerCase(),
+                display_name: dto.displayName.trim(),
+            })
+            .select()
+            .single();
+
+        if (error) {
+            if (error.code === '23505') {
+                throw new ConflictException(
+                    `Subject "${dto.subject}" already exists for grade ${dto.grade}`,
+                );
+            }
+            this.logger.error(`Error adding subject to catalog: ${error.message}`);
+            throw new InternalServerErrorException('Failed to add subject');
+        }
+
+        this.logger.log(`Added subject to catalog: grade=${dto.grade} subject=${dto.subject}`);
+        return data as SubjectCatalog;
+    }
+
+    async getCatalogSubjects(grade: number): Promise<SubjectCatalog[]> {
+        const { data, error } = await this.supabase
+            .from('subject_catalog')
+            .select('*')
+            .eq('grade', grade)
+            .order('display_name', { ascending: true });
+
+        if (error) {
+            this.logger.error(`Error fetching catalog subjects: ${error.message}`);
+            return [];
+        }
+        return (data ?? []) as SubjectCatalog[];
+    }
+
+    // ─── Catalog: Chapter Management ────────────────────────────────────────
+
+    async addChapterToCatalog(dto: AddChapterDto): Promise<ChapterCatalog> {
+        const { data, error } = await this.supabase
+            .from('chapter_catalog')
+            .insert({
+                grade: dto.grade,
+                subject: dto.subject.trim().toLowerCase(),
+                chapter: dto.chapter.trim().toLowerCase(),
+                display_name: dto.displayName.trim(),
+                chapter_order: dto.order ?? 0,
+            })
+            .select()
+            .single();
+
+        if (error) {
+            if (error.code === '23505') {
+                throw new ConflictException(
+                    `Chapter "${dto.chapter}" already exists for grade ${dto.grade} subject "${dto.subject}"`,
+                );
+            }
+            this.logger.error(`Error adding chapter to catalog: ${error.message}`);
+            throw new InternalServerErrorException('Failed to add chapter');
+        }
+
+        this.logger.log(
+            `Added chapter to catalog: grade=${dto.grade} subject=${dto.subject} chapter=${dto.chapter}`,
+        );
+        return data as ChapterCatalog;
+    }
+
+    async getCatalogChapters(grade: number, subject: string): Promise<ChapterCatalog[]> {
+        const { data, error } = await this.supabase
+            .from('chapter_catalog')
+            .select('*')
+            .eq('grade', grade)
+            .eq('subject', subject.toLowerCase())
+            .order('chapter_order', { ascending: true });
+
+        if (error) {
+            this.logger.error(`Error fetching catalog chapters: ${error.message}`);
+            return [];
+        }
+        return (data ?? []) as ChapterCatalog[];
+    }
+
+    // ─── Discovery: merge catalog + syllabus_chunks ──────────────────────────
+
+    /**
+     * Returns merged unique subject slugs from both subject_catalog and syllabus_chunks.
+     * Catalog entries come first (ordered by display_name), then any extra slugs from chunks.
+     */
+    async getAvailableSubjects(grade: number): Promise<string[]> {
+        const [catalogSubjects, chunksData] = await Promise.all([
+            this.getCatalogSubjects(grade),
+            this.supabase
+                .from('syllabus_chunks')
+                .select('subject')
+                .eq('grade', grade),
+        ]);
+
+        const catalogSlugs = catalogSubjects.map((s) => s.subject);
+        const chunkSlugs = chunksData.error
+            ? []
+            : [...new Set((chunksData.data as { subject: string }[]).map((r) => r.subject))];
+
+        // Catalog entries first, then any extra from chunks not in catalog
+        const merged = [
+            ...catalogSlugs,
+            ...chunkSlugs.filter((s) => !catalogSlugs.includes(s)),
+        ];
+        this.logger.debug(`getAvailableSubjects grade=${grade}: ${merged.length} subjects`);
+        return merged;
+    }
+
+    /**
+     * Returns merged unique chapter slugs from both chapter_catalog and syllabus_chunks.
+     * Catalog entries come first (ordered by chapter_order), then any extra slugs from chunks.
+     */
+    async getAvailableChapters(grade: number, subject: string): Promise<string[]> {
+        const [catalogChapters, chunksData] = await Promise.all([
+            this.getCatalogChapters(grade, subject),
+            this.supabase
+                .from('syllabus_chunks')
+                .select('chapter')
+                .eq('grade', grade)
+                .eq('subject', subject),
+        ]);
+
+        const catalogSlugs = catalogChapters.map((c) => c.chapter);
+        const chunkSlugs = chunksData.error
+            ? []
+            : [...new Set((chunksData.data as { chapter: string }[]).map((r) => r.chapter))];
+
+        const merged = [
+            ...catalogSlugs,
+            ...chunkSlugs.filter((c) => !catalogSlugs.includes(c)),
+        ];
+        this.logger.debug(
+            `getAvailableChapters grade=${grade} subject=${subject}: ${merged.length} chapters`,
+        );
+        return merged;
+    }
 
     async getChunks(grade: number, subject: string, chapter: string): Promise<SyllabusChunk[]> {
         const { data, error } = await this.supabase
