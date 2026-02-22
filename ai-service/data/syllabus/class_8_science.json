@@ -1,0 +1,83 @@
+{
+  "grade": 8,
+  "subject": "Science",
+  "medium": "both",
+  "chapters": [
+    {
+      "chapter_no": 1,
+      "title_en": "Force and Pressure",
+      "title_ml": "ബലവും മർദ്ദവും",
+      "topics": [
+        {
+          "title_en": "Force and Its Effects",
+          "title_ml": "ബലവും അതിന്റെ ഫലങ്ങളും",
+          "content_en": "A force is a push or pull that can change the state of motion of an object. Forces can cause a stationary object to move, a moving object to stop, change its speed, direction, or shape. Force is measured in Newtons (N). There are different types of forces: contact forces (friction, normal force) and non-contact forces (gravity, magnetic force, electrostatic force). Gravitational force pulls objects towards the Earth.",
+          "content_ml": "ബലം ഒരു തള്ളൽ അല്ലെങ്കിൽ വലി ആണ്. ഇത് വസ്തുവിന്റെ ചലനാവസ്ഥ മാറ്റും. ബലം ന്യൂട്ടൺ (N) ൽ അളക്കുന്നു. സ്പർശ ബലം (ഘർഷണം), സ്പർശ രഹിത ബലം (ഗുരുത്വം, കാന്തിക ബലം) എന്നിങ്ങനെ ഉണ്ട്.",
+          "keywords": ["force", "push", "pull", "Newton", "gravity", "friction", "ബലം", "ഗുരുത്വം"],
+          "difficulty": "basic"
+        },
+        {
+          "title_en": "Pressure",
+          "title_ml": "മർദ്ദം",
+          "content_en": "Pressure is the force applied per unit area. Pressure = Force / Area. Unit of pressure is Pascal (Pa). Sharp objects exert more pressure because they have a smaller area. A camel can walk on sand because its broad feet distribute its weight over a larger area, reducing pressure. Atmospheric pressure is the pressure exerted by the atmosphere at sea level — about 101,325 Pa. Water exerts pressure that increases with depth.",
+          "content_ml": "ഒരു ഏകക വിസ്തൃതിയിൽ പ്രയോഗിക്കുന്ന ബലമാണ് മർദ്ദം. മർദ്ദം = ബലം / വിസ്തൃതി. ഏകം: പാസ്കൽ (Pa). വായു 101,325 Pa മർദ്ദം ചെലുത്തുന്നു. ആഴം കൂടുന്തോറും ജലമർദ്ദം കൂടുന്നു.",
+          "keywords": ["pressure", "pascal", "area", "atmospheric pressure", "water pressure", "മർദ്ദം", "പാസ്കൽ"],
+          "difficulty": "medium"
+        }
+      ]
+    },
+    {
+      "chapter_no": 2,
+      "title_en": "Friction",
+      "title_ml": "ഘർഷണം",
+      "topics": [
+        {
+          "title_en": "What is Friction?",
+          "title_ml": "ഘർഷണം എന്നാൽ എന്ത്?",
+          "content_en": "Friction is a force that opposes the relative motion between two surfaces in contact. Friction acts in the direction opposite to motion. It arises due to the interlocking of irregularities on the two surfaces. Static friction is the friction that keeps a stationary object at rest. Sliding friction acts when an object slides on a surface. Rolling friction is less than sliding friction — this is why wheels are used.",
+          "content_ml": "ഘർഷണം രണ്ട് പ്രതലങ്ങൾ തമ്മിലുള്ള ആപേക്ഷിക ചലനത്തെ എതിർക്കുന്ന ബലമാണ്. ചലനദിശയ്ക്ക് എതിർ ദിശയിൽ പ്രവർത്തിക്കുന്നു. ഉരുളൽ ഘർഷണം വഴുക്കൽ ഘർഷണത്തേക്കാൾ കുറവ്. അതിനാൽ ചക്രങ്ങൾ ഉപയോഗിക്കുന്നു.",
+          "keywords": ["friction", "static friction", "sliding friction", "rolling friction", "ഘർഷണം"],
+          "difficulty": "basic"
+        }
+      ]
+    },
+    {
+      "chapter_no": 3,
+      "title_en": "Sound",
+      "title_ml": "ശബ്ദം",
+      "topics": [
+        {
+          "title_en": "Production and Propagation of Sound",
+          "title_ml": "ശബ്ദ ഉൽപ്പാദനവും പ്രചാരണവും",
+          "content_en": "Sound is produced by vibration. All sounds are produced when an object vibrates. Sound travels as a longitudinal wave — particles of the medium vibrate parallel to the direction of wave travel. Sound needs a medium (solid, liquid, or gas) to travel — it cannot travel through vacuum. Sound travels fastest in solids, slower in liquids, and slowest in gases. Speed of sound in air is about 340 m/s at room temperature.",
+          "content_ml": "ശബ്ദം കമ്പനത്തിൽ നിന്ന് ഉൽഭവിക്കുന്നു. ശബ്ദം ദൈർഘ്യ തരംഗങ്ങളായി സഞ്ചരിക്കുന്നു. ശബ്ദ സഞ്ചാരത്തിന് മാധ്യമം ആവശ്യം. ശൂന്യതയിൽ ശബ്ദം സഞ്ചരിക്കില്ല. ഖരങ്ങളിൽ ഏറ്റവും വേഗം, വാതകങ്ങളിൽ ഏറ്റവും കുറവ്.",
+          "keywords": ["sound", "vibration", "wave", "medium", "vacuum", "speed of sound", "ശബ്ദം", "കമ്പനം"],
+          "difficulty": "basic"
+        },
+        {
+          "title_en": "Amplitude, Frequency and Pitch",
+          "title_ml": "വ്യാപ്തി, ആവൃത്തി, ശ്രുതി",
+          "content_en": "Loudness of sound depends on amplitude — greater amplitude means louder sound. Pitch of sound depends on frequency — higher frequency means shriller (higher pitch) sound. Frequency is measured in Hertz (Hz). Humans can hear sounds between 20 Hz and 20,000 Hz (20 kHz). Sounds below 20 Hz are infrasonic and above 20,000 Hz are ultrasonic. Bats and dolphins use ultrasound for navigation (echolocation).",
+          "content_ml": "ശബ്ദത്തിന്റെ ഉച്ചത്തിൽ വ്യാപ്തി, ഉയർന്ന ശ്രുതി ആവൃത്തിയെ ആശ്രയിക്കുന്നു. ആവൃത്തി ഹെർട്സ് (Hz) ൽ. മനുഷ്യർക്ക് 20 Hz – 20,000 Hz കേൾക്കാം. ബാറ്റ്, ഡോൾഫിൻ അൾട്രാ ശബ്ദം ഉപയോഗിക്കുന്നു.",
+          "keywords": ["amplitude", "frequency", "pitch", "hertz", "ultrasonic", "infrasonic", "echolocation", "ആവൃത്തി"],
+          "difficulty": "medium"
+        }
+      ]
+    },
+    {
+      "chapter_no": 4,
+      "title_en": "Light",
+      "title_ml": "പ്രകാശം",
+      "topics": [
+        {
+          "title_en": "Reflection of Light",
+          "title_ml": "പ്രകാശ പ്രതിഫലനം",
+          "content_en": "Light travels in straight lines. When light hits a surface, it bounces back — this is called reflection. Laws of reflection: (1) The angle of incidence equals the angle of reflection. (2) The incident ray, reflected ray, and normal all lie in the same plane. Regular reflection occurs on smooth surfaces like mirrors. Diffuse reflection occurs on rough surfaces. Images formed in a plane mirror are virtual, erect, and laterally inverted.",
+          "content_ml": "പ്രകാശം നേർരേഖയിൽ സഞ്ചരിക്കുന്നു. ഒരു പ്രതലത്തിൽ നിന്ന് തിരിച്ചു വരുന്നതാണ് പ്രതിഫലനം. പ്രതിഫലന നിയമം: പതന കോൺ = പ്രതിഫലന കോൺ. സമതല കണ്ണാടിയിൽ ഉണ്ടാകുന്ന പ്രതിബിംബം സാങ്കൽപ്പികം, നേർ, പാർശ്വ വ്യുൽക്രമം.",
+          "keywords": ["reflection", "angle of incidence", "angle of reflection", "mirror", "virtual image", "പ്രതിഫലനം"],
+          "difficulty": "basic"
+        }
+      ]
+    }
+  ]
+}

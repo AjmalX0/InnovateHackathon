@@ -1,0 +1,107 @@
+{
+  "grade": 7,
+  "subject": "Science",
+  "medium": "both",
+  "chapters": [
+    {
+      "chapter_no": 1,
+      "title_en": "Nutrition in Plants",
+      "title_ml": "സസ്യങ്ങളിലെ പോഷണം",
+      "topics": [
+        {
+          "title_en": "Photosynthesis",
+          "title_ml": "ഫോട്ടോസിന്തസിസ്",
+          "content_en": "Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide. Chlorophyll in the leaves absorbs sunlight. The leaves take in carbon dioxide from the air through tiny pores called stomata. Water is absorbed by roots and transported to leaves. The plant uses light energy to convert water and carbon dioxide into glucose and oxygen. The equation is: 6CO2 + 6H2O + light energy → C6H12O6 + 6O2. Oxygen is released as a by-product which we breathe.",
+          "content_ml": "ഫോട്ടോസിന്തസിസ് എന്നത് ഹരിതസസ്യങ്ങൾ സൂര്യപ്രകാശം, വെള്ളം, കാർബൺ ഡൈഓക്സൈഡ് ഉപയോഗിച്ച് ഭക്ഷണം ഉണ്ടാക്കുന്ന പ്രക്രിയയാണ്. ഇലകളിലെ ക്ലോറോഫിൽ സൂര്യപ്രകാശം ആഗിരണം ചെയ്യുന്നു. സ്റ്റൊമേറ്റ എന്ന സൂക്ഷ്മദ്വാരങ്ങളിലൂടെ CO2 ആഗിരണം ചെയ്യപ്പെടുന്നു. വേരുകൾ വെള്ളം ആഗിരണം ചെയ്ത് ഇലകളിലേക്ക് കൊണ്ടുപോകുന്നു. ഗ്ലൂക്കോസും ഓക്സിജനും ഉൽപ്പാദിപ്പിക്കപ്പെടുന്നു.",
+          "keywords": ["photosynthesis", "chlorophyll", "glucose", "stomata", "carbon dioxide", "ഫോട്ടോസിന്തസിസ്", "ക്ലോറോഫിൽ"],
+          "difficulty": "basic"
+        },
+        {
+          "title_en": "Parasitic and Insectivorous Plants",
+          "title_ml": "പരോപജീവി, കീടഭോജി സസ്യങ്ങൾ",
+          "content_en": "Some plants cannot make their own food and depend on other organisms. Cuscuta (dodder) is a parasitic plant that grows on other plants and absorbs nutrients from them. Pitcher plant (Nepenthes) and Venus flytrap are insectivorous plants that trap and digest insects to obtain nitrogen. These plants usually grow in nitrogen-poor soils like marshy areas.",
+          "content_ml": "ചില സസ്യങ്ങൾക്ക് സ്വന്തമായി ഭക്ഷണം ഉണ്ടാക്കാൻ കഴിയില്ല. കശ്കണ്ടൽ (Cuscuta) ഒരു പരോപജീവി സസ്യമാണ്. ഇൻഡ്യൻ പിച്ചർ പ്ലാന്റ്, വീനസ് ഫ്ലൈട്രാപ് എന്നിവ കീടഭോജി സസ്യങ്ങളാണ്. ഇവ നൈട്രജൻ കുറഞ്ഞ മണ്ണിൽ വളരുന്നു.",
+          "keywords": ["parasitic plant", "cuscuta", "insectivorous", "pitcher plant", "nitrogen", "പരോപജീവി"],
+          "difficulty": "medium"
+        },
+        {
+          "title_en": "Saprophytes and Symbiosis",
+          "title_ml": "മൃതജീവഭോജികളും പരസ്പര സഹജീവിതവും",
+          "content_en": "Saprophytes are organisms that feed on dead and decaying matter. Fungi like mushrooms and bread mould are saprophytes. They release enzymes that break down dead matter into simpler substances. Symbiosis is a mutually beneficial relationship between two organisms. Lichens are a symbiotic relationship between algae and fungi. Rhizobium bacteria live in root nodules of legumes and fix atmospheric nitrogen.",
+          "content_ml": "മൃതജീവഭോജികൾ ജൈവ അവശിഷ്ടങ്ങളെ വിഘടിപ്പിക്കുന്നു. കൂൺ, ബ്രഡ് മോൾഡ് എന്നിവ ഉദാഹരണങ്ങളാണ്. ലൈക്കൺ ആൽഗയും കുമിളും തമ്മിലുള്ള സഹജീവിതമാണ്. റൈസോബിയം ബാക്ടീരിയ സസ്യത്തിന്റെ വേർ മുഴകളിൽ ജീവിച്ച് നൈട്രജൻ ഉറപ്പിക്കുന്നു.",
+          "keywords": ["saprophyte", "fungi", "symbiosis", "lichen", "rhizobium", "nitrogen fixation"],
+          "difficulty": "medium"
+        }
+      ]
+    },
+    {
+      "chapter_no": 2,
+      "title_en": "Heat",
+      "title_ml": "താപം",
+      "topics": [
+        {
+          "title_en": "Temperature and Heat",
+          "title_ml": "താപനിലയും താപവും",
+          "content_en": "Heat is a form of energy that flows from a hotter body to a colder body. Temperature is the measure of hotness or coldness of a body. Temperature is measured using a thermometer in degrees Celsius (°C) or Fahrenheit (°F). The normal human body temperature is 37°C or 98.6°F. Heat always flows from a region of higher temperature to lower temperature until thermal equilibrium is reached.",
+          "content_ml": "താപം ഊർജ്ജത്തിന്റെ ഒരു രൂപമാണ്. ഉയർന്ന താപനിലയിൽ നിന്ന് കുറഞ്ഞ താപനിലയിലേക്ക് ഊർജ്ജം പ്രവഹിക്കുന്നു. താപനില ഒരു ഭൗതിക ഗുണമാണ്, ഥെർമോമീറ്റർ ഉപയോഗിച്ച് അളക്കുന്നു. സാധാരണ ശരീരതാപനില 37°C ആണ്.",
+          "keywords": ["heat", "temperature", "thermometer", "celsius", "thermal equilibrium", "ഊർജ്ജം", "താപനില"],
+          "difficulty": "basic"
+        },
+        {
+          "title_en": "Transfer of Heat",
+          "title_ml": "താപ കൈമാറ്റം",
+          "content_en": "Heat is transferred by three methods: Conduction, Convection, and Radiation. Conduction is the transfer of heat through a solid without movement of the material — metals are good conductors. Convection is heat transfer through liquids and gases by movement of particles — warm air rises and cool air sinks. Radiation is heat transfer without any medium — the Sun's heat reaches Earth by radiation through the vacuum of space.",
+          "content_ml": "താപ കൈമാറ്റത്തിന് മൂന്ന് മാർഗ്ഗങ്ങളുണ്ട്: ചാലകം, സംവഹനം, വികിരണം. ചാലകം — ഖര പദാർഥങ്ങളിലൂടെ. ലോഹങ്ങൾ നല്ല ചാലകങ്ങളാണ്. സംവഹനം — ദ്രാവക, വാതക മാധ്യമങ്ങളിലൂടെ. ചൂടുള്ള വായു ഉയരുന്നു. വികിരണം — മാധ്യമം ആവശ്യമില്ല. സൂര്യൻ ഭൂമിയിലേക്ക് ഊർജ്ജം അയക്കുന്നത് ഇങ്ങനെ.",
+          "keywords": ["conduction", "convection", "radiation", "conductor", "insulator", "ചാലകം", "വികിരണം"],
+          "difficulty": "basic"
+        }
+      ]
+    },
+    {
+      "chapter_no": 3,
+      "title_en": "Acids, Bases and Salts",
+      "title_ml": "അമ്ലങ്ങൾ, ക്ഷാരങ്ങൾ, ലവണങ്ങൾ",
+      "topics": [
+        {
+          "title_en": "Acids and Their Properties",
+          "title_ml": "അമ്ലങ്ങളും അവയുടെ ഗുണങ്ങളും",
+          "content_en": "Acids are substances that have a sour taste and turn blue litmus red. Common acids include hydrochloric acid (HCl), sulphuric acid (H2SO4), and citric acid found in lemons. Acids have a pH value less than 7. Acidic foods include tamarind, curd, and vinegar. Strong acids like HCl and H2SO4 are corrosive and must be handled carefully.",
+          "content_ml": "അമ്ലങ്ങൾ പുളിരസമുള്ളതും നീലനിറ ലിറ്റ്മസ് ചുവപ്പാക്കുന്നതുമാണ്. HCl, H2SO4, സിട്രിക് ആസിഡ് ഉദാഹരണങ്ങളാണ്. pH 7-ൽ കുറവ്. നാരക്ക, തൈര്, വിനാഗ്രി എന്നിവ അമ്ല ഭക്ഷണങ്ങളാണ്.",
+          "keywords": ["acid", "pH", "litmus", "hydrochloric acid", "citric acid", "sour", "അമ്ലം"],
+          "difficulty": "basic"
+        },
+        {
+          "title_en": "Bases and Neutralisation",
+          "title_ml": "ക്ഷാരങ്ങളും നിർവീര്യമാക്കലും",
+          "content_en": "Bases are substances with a bitter taste that turn red litmus blue. Examples include sodium hydroxide (NaOH), calcium hydroxide (lime water), and baking soda (NaHCO3). Bases have pH greater than 7. When an acid reacts with a base, they neutralize each other to form salt and water. This reaction is called neutralisation. Ant sting contains formic acid and can be neutralised by applying baking soda.",
+          "content_ml": "ക്ഷാരങ്ങൾ കൈപ്പ് രസമുള്ളതും ചുവന്ന ലിറ്റ്മസ് നീലമാക്കുന്നതുമാണ്. NaOH, Ca(OH)2, ബേക്കിംഗ് സോഡ ഉദാഹരണങ്ങൾ. pH 7-ൽ കൂടുതൽ. അമ്ലവും ക്ഷാരവും ചേർന്ന് ലവണവും ജലവും ഉണ്ടാകുന്ന പ്രക്രിയ നിർവീര്യമാക്കൽ.",
+          "keywords": ["base", "alkali", "neutralisation", "sodium hydroxide", "baking soda", "pH", "ക്ഷാരം"],
+          "difficulty": "basic"
+        }
+      ]
+    },
+    {
+      "chapter_no": 4,
+      "title_en": "Weather, Climate and Adaptations",
+      "title_ml": "കാലാവസ്ഥ, ജലവായുക്കൾ, അനുകൂലനം",
+      "topics": [
+        {
+          "title_en": "Weather and Climate",
+          "title_ml": "കാലാവസ്ഥയും ജലവായുവും",
+          "content_en": "Weather is the day-to-day condition of the atmosphere at a place — temperature, humidity, rainfall, wind speed. Climate is the average weather pattern of a region over many years. Kerala has a tropical monsoon climate with heavy rainfall from June to November. The southwest monsoon (June–September) and northeast monsoon (October–November) bring rain to Kerala. Cherrapunji in Meghalaya receives the highest rainfall in India.",
+          "content_ml": "കാലാവസ്ഥ ഒരു സ്ഥലത്തെ ദൈനംദിന അന്തരീക്ഷ അവസ്ഥയാണ്. ജലവായു ദീർഘകാല ശരാശരി കാലാവസ്ഥയാണ്. കേരളത്തിൽ ഉഷ്ണമേഖലാ മൺസൂൺ ജലവായുവാണ്. തെക്കുപടിഞ്ഞാറൻ മൺസൂൺ ജൂൺ–സെപ്റ്റംബർ, വടക്കുകിഴക്കൻ മൺസൂൺ ഒക്ടോബർ–നവംബർ.",
+          "keywords": ["weather", "climate", "monsoon", "Kerala", "rainfall", "temperature", "കാലാവസ്ഥ", "മൺസൂൺ"],
+          "difficulty": "basic"
+        },
+        {
+          "title_en": "Animal Adaptations",
+          "title_ml": "ജന്തു അനുകൂലനങ്ങൾ",
+          "content_en": "Animals adapt to their environment to survive. Polar bears have thick fur and a layer of fat (blubber) to stay warm in Arctic cold. Camels have humps that store fat (not water), long eyelashes and nostrils that close to survive desert conditions. Fish have streamlined bodies and gills for water. Animals in rainforests like the Western Ghats have bright colours for camouflage. Migration is a seasonal movement of animals to find food or breed.",
+          "content_ml": "ജന്തുക്കൾ അതിജീവനത്തിനായി അവയുടെ ചുറ്റുപാടുകൾക്ക് അനുകൂലമായി ജൈവ മാറ്റങ്ങൾ വരുത്തുന്നു. ധ്രുവക്കരടിക്ക് കട്ടിയുള്ള രോമവും കൊഴുപ്പ് പാളിയുമുണ്ട്. ഒട്ടകത്തിന്റെ കൂനൽ കൊഴുപ്പ് ശേഖരിക്കുന്നു.",
+          "keywords": ["adaptation", "polar bear", "camel", "migration", "Western Ghats", "camouflage", "അനുകൂലനം"],
+          "difficulty": "medium"
+        }
+      ]
+    }
+  ]
+}
