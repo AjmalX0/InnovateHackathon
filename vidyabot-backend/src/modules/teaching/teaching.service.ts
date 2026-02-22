@@ -40,12 +40,13 @@ export class TeachingService {
         // 1. Load student
         const student = await this.studentsService.getProfile(studentId);
 
-        // 2. Compute capability cluster
+        // 2. Compute capability cluster — factors in simplify button penalties
         let cluster: CapabilityCluster;
         if (recentMessages.length > 0) {
-            cluster = this.capabilityService.getClusterFromMessages(recentMessages);
+            const score = this.capabilityService.computeScoreForStudent(studentId, recentMessages);
+            cluster = this.capabilityService.getCluster(score);
         } else {
-            cluster = this.capabilityService.getCluster(student.capability_score);
+            cluster = this.capabilityService.getClusterForStudent(studentId, student.capability_score);
         }
 
         this.logger.log(
