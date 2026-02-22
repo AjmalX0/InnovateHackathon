@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:vidhyabot/presentation/home/home_screen.dart';
+import 'package:vidhyabot/presentation/main/main_screen.dart';
 import 'core/theme/app_theme.dart';
+import 'presentation/login/login_screen.dart';
 
 void main() {
   runApp(const VidhyaBotApp());
@@ -15,7 +16,7 @@ class VidhyaBotApp extends StatelessWidget {
       title: 'Vidhyabot',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const HomeScreen(),
+      home: const MainScreen(),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../chat/ai_chat_screen.dart';
 import '../home/home_screen.dart';
 import '../quiz/quiz_screen.dart';
 
@@ -13,7 +14,11 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = const [HomeScreen(), QuizScreen()];
+  final List<Widget> _pages = const [
+    HomeScreen(),
+    AiChatScreen(),
+    QuizScreen(),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +41,14 @@ class _MainScreenState extends State<MainScreen> {
               color: AppColors.primaryDark,
             ),
             label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.smart_toy_outlined),
+            selectedIcon: Icon(
+              Icons.smart_toy_rounded,
+              color: AppColors.primaryDark,
+            ),
+            label: 'AI Chat',
           ),
           NavigationDestination(
             icon: Icon(Icons.quiz_outlined),

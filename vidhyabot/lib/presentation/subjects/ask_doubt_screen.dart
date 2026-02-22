@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
-import '../../core/services/manglish_transliterator.dart';
-import '../../core/services/whisper_stt_service.dart';
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+import '../../core/services/chat_service.dart';
+import '../../core/services/udp_stt_service.dart';
 import '../../core/services/text_to_speech_service.dart';
 
 enum DoubtLanguageOption { english, malayalam, autoDetect }
@@ -16,24 +19,33 @@ class AskDoubtScreen extends StatefulWidget {
   State<AskDoubtScreen> createState() => _AskDoubtScreenState();
 }
 
+class ChatMessage {
+  final String text;
+  final bool isUser;
+
+  ChatMessage({required this.text, required this.isUser});
+}
+
 class _AskDoubtScreenState extends State<AskDoubtScreen> {
   final TextEditingController _textController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   final TextToSpeechService _ttsService = TextToSpeechService();
-  final WhisperSttService _sttService = WhisperSttService();
+  final UdpSttService _sttService = UdpSttService();
+  late final ChatService _chatService;
 
-  DoubtLanguageOption _selectedLanguage = DoubtLanguageOption.autoDetect;
-  String _recognizedText = '';
+  final List<ChatMessage> _messages = [];
+
   String? _errorMessage;
-  double _pitch = 1.0;
-  double _speechRate = 0.5;
-  double _soundLevel = 0.0;
   bool _isTtsReady = false;
   bool _isSpeechReady = false;
-  bool _isSpeaking = false;
   bool _isTranscribing = false;
   bool _isInitializing = true;
+  bool _isOffline = false;
+  bool _isAiTyping = false;
 
-  List<Map<String, dynamic>> _availableVoices = [];
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+
+  String _hintText = 'Type a message...';
 
   void _log(String message) {
     debugPrint('[AskDoubtScreen] $message');
@@ -42,7 +54,50 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
   @override
   void initState() {
     super.initState();
+
+    _chatService = ChatService(contextHint: 'Chapter: ${widget.chapterTitle}');
+    _chatService.onProgressChanged = () {
+      if (mounted) setState(() {});
+    };
+    _chatService.init();
+
+    _textController.addListener(_onTextChanged);
+    _messages.add(
+      ChatMessage(
+        text:
+            'Hello! How can I help you with the ${widget.chapterTitle} chapter today?',
+        isUser: false,
+      ),
+    );
+    _checkInitialConnectivity();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      List<ConnectivityResult> results,
+    ) {
+      if (mounted) {
+        setState(() {
+          _isOffline =
+              results.contains(ConnectivityResult.none) || results.isEmpty;
+          if (_isOffline && _sttService.isListening) {
+            _toggleRecording(); // auto-stop mic if offline
+          }
+        });
+      }
+    });
     _initializeEngines();
+  }
+
+  Future<void> _checkInitialConnectivity() async {
+    final results = await Connectivity().checkConnectivity();
+    if (mounted) {
+      setState(() {
+        _isOffline =
+            results.contains(ConnectivityResult.none) || results.isEmpty;
+      });
+    }
+  }
+
+  void _onTextChanged() {
+    setState(() {});
   }
 
   Future<void> _initializeEngines() async {
@@ -50,442 +105,574 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
     _isTtsReady = await _ttsService.initialize();
 
     try {
-      if (_isTtsReady) {
-        _availableVoices = await _ttsService.getAvailableVoices();
-      }
-
       _isSpeechReady = await _sttService.initialize();
       _log('Engine init result -> TTS: $_isTtsReady, STT: $_isSpeechReady');
 
-      final voiceUnavailable = !_isTtsReady && !_isSpeechReady;
-      final sttUnavailable = _isTtsReady && !_isSpeechReady;
-      final ttsUnavailable = !_isTtsReady && _isSpeechReady;
-
-      String? initError;
-      if (voiceUnavailable) {
-        initError =
-            'Voice features are unavailable in this runtime. Run on Android/iOS and do a full restart after adding plugins.';
-      } else if (sttUnavailable) {
-        initError =
-            'Speech-to-Text is unavailable. Grant mic permission or run on Android/iOS.';
-      } else if (ttsUnavailable) {
-        initError =
-            'Text-to-Speech is unavailable in this runtime. Try a full restart on Android/iOS.';
-      }
-
       if (mounted) {
         setState(() {
-          _errorMessage = initError;
           _isInitializing = false;
         });
       }
     } catch (error) {
       _log('Initialization exception: $error');
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() {
-        _errorMessage =
-            'Initialization failed. Run on Android/iOS and perform a full restart.';
         _isInitializing = false;
       });
     }
   }
 
-  String _localeForTts(DoubtLanguageOption option, String text) {
-    switch (option) {
-      case DoubtLanguageOption.english:
-        return 'en-IN';
-      case DoubtLanguageOption.malayalam:
-        return 'ml-IN';
-      case DoubtLanguageOption.autoDetect:
-        if (ManglishTransliterator.containsMalayalam(text)) {
-          return 'ml-IN';
-        }
-        if (ManglishTransliterator.looksManglish(text)) {
-          return 'ml-IN';
-        }
-        return 'en-IN';
-    }
-  }
-
-  String? _localeForStt(DoubtLanguageOption option) {
-    switch (option) {
-      case DoubtLanguageOption.english:
-        return 'en-IN';
-      case DoubtLanguageOption.malayalam:
-        return 'ml-IN';
-      case DoubtLanguageOption.autoDetect:
-        return null;
-    }
-  }
-
-  String _textForSpeech(DoubtLanguageOption option, String text) {
-    final trimmed = text.trim();
-    if (option == DoubtLanguageOption.malayalam &&
-        ManglishTransliterator.looksManglish(trimmed)) {
-      return ManglishTransliterator.transliterate(trimmed);
-    }
-
-    if (option == DoubtLanguageOption.autoDetect &&
-        ManglishTransliterator.looksManglish(trimmed)) {
-      return ManglishTransliterator.transliterate(trimmed);
-    }
-
-    return trimmed;
-  }
-
-  Future<void> _speak() async {
-    if (!_isTtsReady) {
-      setState(() {
-        _errorMessage =
-            'Text-to-Speech is not available on this device/runtime.';
-      });
-      return;
-    }
-
-    final inputText = _textController.text;
-    if (inputText.trim().isEmpty) {
-      setState(() {
-        _errorMessage = 'Please type or dictate text before speaking.';
-      });
-      return;
-    }
-
-    try {
-      setState(() {
-        _isSpeaking = true;
-        _errorMessage = null;
-      });
-
-      final textToSpeak = _textForSpeech(_selectedLanguage, inputText);
-      final languageCode = _localeForTts(_selectedLanguage, inputText);
-
-      await _ttsService.setLanguage(languageCode);
-      await _ttsService.setPitch(_pitch);
-      await _ttsService.setSpeechRate(_speechRate);
-      await _ttsService.speak(textToSpeak);
-    } catch (error) {
-      setState(() {
-        _errorMessage = 'Text-to-Speech failed: $error';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSpeaking = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _startListening() async {
-    _log('Start listening tapped');
-    if (!_isSpeechReady) {
-      await _retrySpeechInitialization();
-    }
-
-    if (!_isSpeechReady) {
-      final hasPermission = await _sttService.hasPermission();
-      setState(() {
-        _errorMessage = hasPermission
-            ? 'Speech engine failed to initialize. Please restart the app and try again.'
-            : 'Microphone permission is denied. Please enable microphone access in app settings and try again.';
-      });
-      return;
-    }
-
-    try {
-      setState(() {
-        _errorMessage = null;
-      });
-
-      await _sttService.startListening();
-
-      setState(() {
-        _recognizedText = 'Recording audio... Speak clearly.';
-      });
-      _log('Listening started successfully');
-    } catch (error) {
-      _log('Start listening failed: $error');
-      final errorText = error.toString().toLowerCase();
-      final localeUnavailable = errorText.contains(
-        'requested speech locale is not installed',
-      );
-
-      if (localeUnavailable) {
-        // Fallback or retry logic can be abbreviated since HF API just needs recording.
-        await _sttService.startListening();
-        setState(() {
-          _recognizedText = 'Recording audio... (Retry)';
-        });
-        return;
-      }
-
-      setState(() {
-        _errorMessage = 'Unable to start listening: $error';
-      });
-    }
-  }
-
-  Future<void> _retrySpeechInitialization() async {
-    try {
-      _log('Retrying speech initialization');
-      final ready = await _sttService.initialize();
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _isSpeechReady = ready;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isSpeechReady = false;
-      });
-    }
-  }
-
-  Future<void> _stopListening() async {
-    if (_isTranscribing) {
-      return;
-    }
-
-    try {
-      _log('Stop listening tapped; starting transcription');
-      setState(() {
-        _isTranscribing = true;
-      });
-
-      final transcribedText = await _sttService.stopListeningAndTranscribe(
-        localeId: _localeForStt(_selectedLanguage),
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _recognizedText = transcribedText;
-        _textController.text = transcribedText;
-        _textController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _textController.text.length),
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
         );
-        _soundLevel = 0.0;
-        if (transcribedText.trim().isEmpty) {
-          _errorMessage =
-              'No clear speech detected. Please speak closer to the microphone and try again.';
-        }
-      });
-      _log('Transcription result: $transcribedText');
-    } catch (error) {
-      _log('Stop listening/transcription failed: $error');
-      if (!mounted) {
-        return;
       }
-      setState(() {
-        _errorMessage = 'Unable to stop listening: $error';
-      });
+    });
+  }
+
+  Future<void> _sendMessage(String text) async {
+    if (text.trim().isEmpty || _isAiTyping) return;
+
+    setState(() {
+      _messages.add(ChatMessage(text: text.trim(), isUser: true));
+      _textController.clear();
+      _hintText = 'Type a message...';
+      _errorMessage = null;
+      // Placeholder AI message that we'll fill token by token
+      _messages.add(ChatMessage(text: '', isUser: false));
+      _isAiTyping = true;
+    });
+
+    _scrollToBottom();
+
+    final aiIndex = _messages.length - 1;
+
+    try {
+      await for (final token in _chatService.sendMessage(
+        text.trim(),
+        isOnline: !_isOffline,
+      )) {
+        if (!mounted) break;
+        setState(() {
+          _messages[aiIndex] = ChatMessage(
+            text: _messages[aiIndex].text + token,
+            isUser: false,
+          );
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _messages[aiIndex] = ChatMessage(text: 'Error: $e', isUser: false);
+        });
+      }
     } finally {
       if (mounted) {
+        setState(() {
+          _isAiTyping = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_isTranscribing) return;
+
+    if (_sttService.isListening) {
+      try {
+        _log('Stop listening tapped; starting transcription');
+        setState(() {
+          _isTranscribing = true;
+          _hintText = 'Thinking...';
+        });
+
+        final transcribedText = await _sttService.stopListeningAndTranscribe();
+
+        if (!mounted) return;
+
         setState(() {
           _isTranscribing = false;
+          _hintText = 'Type a message...';
+          _errorMessage = null;
+          if (transcribedText.trim().isNotEmpty) {
+            _sendMessage(transcribedText);
+          }
+        });
+      } catch (error) {
+        _log('Stop listening/transcription failed: $error');
+        if (!mounted) return;
+        setState(() {
+          _isTranscribing = false;
+          if (error is TimeoutException || error.toString().contains('10s')) {
+            _hintText = 'Please try again';
+          } else {
+            _hintText = 'Error occurred';
+            _errorMessage = 'Unable to stop listening: $error';
+          }
+        });
+
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && !_sttService.isListening) {
+            setState(() => _hintText = 'Type a message...');
+          }
         });
       }
-    }
-  }
-
-  Future<void> _stopSpeaking() async {
-    try {
-      await _ttsService.stop();
-      if (!mounted) {
-        return;
+    } else {
+      if (!_isSpeechReady) {
+        final hasPerm = await _sttService.hasPermission();
+        if (!hasPerm) {
+          setState(() {
+            _errorMessage = 'Microphone permission denied.';
+          });
+          return;
+        }
+        _isSpeechReady = await _sttService.initialize();
       }
-      setState(() {
-        _isSpeaking = false;
-      });
-    } catch (error) {
-      setState(() {
-        _errorMessage = 'Unable to stop speaking: $error';
-      });
+
+      try {
+        await _sttService.startListening();
+        setState(() {
+          _hintText = 'Listening...';
+          _errorMessage = null;
+        });
+        _log('Listening started successfully');
+      } catch (error) {
+        _log('Start listening failed: $error');
+        setState(() {
+          _errorMessage = 'Unable to start listening: $error';
+          _hintText = 'Type a message...';
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    _connectivitySubscription.cancel();
+    _textController.removeListener(_onTextChanged);
     _textController.dispose();
+    _scrollController.dispose();
     _ttsService.dispose();
     _sttService.dispose();
+    _chatService.dispose();
+    super.dispose();
+  }
+
+  Widget _buildChatBubble(ChatMessage message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Row(
+        mainAxisAlignment: message.isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!message.isUser) ...[
+            Container(
+              margin: const EdgeInsets.only(right: 8, top: 4),
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.auto_awesome,
+                color: AppColors.primary,
+                size: 16,
+              ),
+            ),
+          ],
+          Flexible(
+            child: message.text.isEmpty && _isAiTyping
+                ? Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 18,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                        bottomLeft: Radius.circular(4),
+                        bottomRight: Radius.circular(20),
+                      ),
+                    ),
+                    child: const SizedBox(
+                      width: 40,
+                      height: 20,
+                      child: _TypingIndicator(),
+                    ),
+                  )
+                : Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 18,
+                    ),
+                    decoration: BoxDecoration(
+                      color: message.isUser
+                          ? AppColors.primary
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft: message.isUser
+                            ? const Radius.circular(20)
+                            : const Radius.circular(4),
+                        bottomRight: message.isUser
+                            ? const Radius.circular(4)
+                            : const Radius.circular(20),
+                      ),
+                      boxShadow: [
+                        if (!message.isUser)
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 5,
+                            offset: const Offset(0, 2),
+                          ),
+                      ],
+                    ),
+                    child: Text(
+                      message.text,
+                      style: TextStyle(
+                        color: message.isUser ? Colors.white : Colors.black87,
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+          ),
+          if (message.isUser) ...[
+            Container(
+              margin: const EdgeInsets.only(left: 8, top: 4),
+              child: CircleAvatar(
+                radius: 14,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.2),
+                child: const Icon(
+                  Icons.person,
+                  color: AppColors.primary,
+                  size: 16,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isMicActive = _sttService.isListening;
+    final bool isBusy = _isTranscribing;
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text('Ask a Doubt • ${widget.chapterTitle}'),
+        elevation: 1,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _isOffline ? Icons.cloud_off : Icons.cloud_done,
+                  size: 16,
+                  color: _isOffline
+                      ? Colors.orange.shade700
+                      : Colors.green.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _isOffline ? 'Offline' : 'Online',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: _isOffline
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      body: _isInitializing
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // Download progress banner
+                if (_chatService.isDownloading)
+                  Container(
+                    width: double.infinity,
+                    color: AppColors.primaryLight.withValues(alpha: 0.15),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _chatService.downloadStatus,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.primaryDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        LinearProgressIndicator(
+                          value: _chatService.downloadProgress > 0
+                              ? _chatService.downloadProgress
+                              : null,
+                          color: AppColors.primary,
+                          backgroundColor: AppColors.primaryLight.withValues(
+                            alpha: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_errorMessage != null)
+                  Container(
+                    width: double.infinity,
+                    color: Colors.red.shade100,
+                    padding: const EdgeInsets.all(8),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(
+                        color: Colors.red.shade900,
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(top: 16, bottom: 20),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      return _buildChatBubble(_messages[index]);
+                    },
+                  ),
+                ),
+                if (_isAiTyping)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 2,
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _isOffline
+                            ? '⚙ Local AI is thinking...'
+                            : '✦ Gemini is writing...',
+                        style: const TextStyle(
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                Container(
+                  padding: const EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    bottom: 24,
+                    top: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: isMicActive
+                                  ? AppColors.primary.withValues(alpha: 0.5)
+                                  : Colors.transparent,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: TextField(
+                            controller: _textController,
+                            minLines: 1,
+                            maxLines: 4,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: _sendMessage,
+                            enabled: !isMicActive && !isBusy && !_isAiTyping,
+                            decoration: InputDecoration(
+                              hintText: _isOffline
+                                  ? 'Offline mode: text only...'
+                                  : _hintText,
+                              hintStyle: TextStyle(
+                                color:
+                                    (isMicActive ||
+                                        isBusy ||
+                                        _hintText == 'Please try again')
+                                    ? AppColors.primary
+                                    : Colors.grey.shade500,
+                                fontStyle: (isMicActive || isBusy || _isOffline)
+                                    ? FontStyle.italic
+                                    : FontStyle.normal,
+                              ),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: _textController.text.trim().isNotEmpty
+                            ? Container(
+                                key: const ValueKey('sendBtn'),
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.send_rounded,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: _isAiTyping
+                                      ? null
+                                      : () =>
+                                            _sendMessage(_textController.text),
+                                ),
+                              )
+                            : (_isOffline
+                                  ? const SizedBox.shrink()
+                                  : Container(
+                                      key: ValueKey(
+                                        isMicActive
+                                            ? 'stopMicBtn'
+                                            : (isBusy
+                                                  ? 'busyBtn'
+                                                  : 'startMicBtn'),
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isBusy
+                                            ? Colors.grey.shade300
+                                            : (isMicActive
+                                                  ? Colors.red.shade50
+                                                  : AppColors.primary
+                                                        .withValues(
+                                                          alpha: 0.1,
+                                                        )),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: IconButton(
+                                        icon: isBusy
+                                            ? const SizedBox(
+                                                width: 24,
+                                                height: 24,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : Icon(
+                                                isMicActive
+                                                    ? Icons.stop_rounded
+                                                    : Icons.mic_rounded,
+                                                color: isMicActive
+                                                    ? Colors.red
+                                                    : AppColors.primary,
+                                              ),
+                                        onPressed: isBusy
+                                            ? null
+                                            : _toggleRecording,
+                                      ),
+                                    )),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+/// Simple three-dot typing animation shown while AI streams its first tokens.
+class _TypingIndicator extends StatefulWidget {
+  const _TypingIndicator();
+
+  @override
+  State<_TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<_TypingIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Ask a Doubt • ${widget.chapterTitle}')),
-      body: _isInitializing
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Ask your doubt by typing or speaking.',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: AppColors.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _textController,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Type your doubt',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<DoubtLanguageOption>(
-                    initialValue: _selectedLanguage,
-                    decoration: const InputDecoration(
-                      labelText: 'Language',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: DoubtLanguageOption.english,
-                        child: Text('English (en-IN)'),
-                      ),
-                      DropdownMenuItem(
-                        value: DoubtLanguageOption.malayalam,
-                        child: Text('Malayalam (ml-IN)'),
-                      ),
-                      DropdownMenuItem(
-                        value: DoubtLanguageOption.autoDetect,
-                        child: Text('Auto Detect'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) {
-                        return;
-                      }
-                      setState(() {
-                        _selectedLanguage = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Pitch: ${_pitch.toStringAsFixed(2)}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  Slider(
-                    min: 0.5,
-                    max: 2.0,
-                    value: _pitch,
-                    onChanged: (value) {
-                      setState(() {
-                        _pitch = value;
-                      });
-                    },
-                  ),
-                  Text(
-                    'Speech rate: ${_speechRate.toStringAsFixed(2)}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  Slider(
-                    min: 0.1,
-                    max: 1.0,
-                    value: _speechRate,
-                    onChanged: (value) {
-                      setState(() {
-                        _speechRate = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _isTtsReady ? _speak : null,
-                        icon: const Icon(Icons.volume_up_outlined),
-                        label: const Text('Speak'),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: _isTranscribing ? null : _startListening,
-                        icon: const Icon(Icons.mic_none_rounded),
-                        label: const Text('Start Listening'),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: _sttService.isListening && !_isTranscribing
-                            ? _stopListening
-                            : null,
-                        icon: const Icon(Icons.stop_circle_outlined),
-                        label: _isTranscribing
-                            ? const Text('Uploading...')
-                            : const Text('Stop & Transcribe'),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: _isSpeaking ? _stopSpeaking : null,
-                        icon: const Icon(Icons.volume_off_outlined),
-                        label: const Text('Stop Speaking'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Mic level: ${_soundLevel.toStringAsFixed(1)}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Recognized speech (real-time)',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _recognizedText.isEmpty
-                          ? 'Start listening to see live transcription here.'
-                          : _recognizedText,
-                      style: TextStyle(
-                        color: _recognizedText.isEmpty
-                            ? Colors.grey.shade600
-                            : AppColors.onSurface,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_availableVoices.isNotEmpty)
-                    Text(
-                      'Available voices detected: ${_availableVoices.length}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  if (_errorMessage != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  ],
-                ],
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, __) {
+        final phase = (_controller.value * 3).floor();
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(
+                  alpha: phase == i ? 0.9 : 0.3,
+                ),
+                shape: BoxShape.circle,
               ),
-            ),
+            );
+          }),
+        );
+      },
     );
   }
 }

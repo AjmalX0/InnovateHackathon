@@ -9,24 +9,30 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
         title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
+            const Text(
               'Hello, Student! 👋',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
+              style: TextStyle(
+                color: AppColors.primaryLight,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                letterSpacing: 0.2,
               ),
             ),
             const Text(
               'My Subjects',
               style: TextStyle(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
                 fontSize: 24,
+                color: Colors.black87,
                 letterSpacing: -0.5,
               ),
             ),
@@ -36,31 +42,35 @@ class HomeScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.account_circle),
             color: AppColors.primaryDark,
+            iconSize: 28,
             onPressed: () {},
           ),
           const SizedBox(width: 8),
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'What do you want to learn today?',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryDark,
+            Center(
+              child: Text(
+                'What do you want to learn today?',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  color: AppColors.primaryDark,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
             Expanded(
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 1.1,
+                  childAspectRatio: 0.95,
                 ),
                 itemCount: dummySubjects.length,
                 itemBuilder: (context, index) {
@@ -99,9 +109,9 @@ class _SubjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 4,
-      shadowColor: AppColors.primary.withOpacity(0.2),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -111,43 +121,49 @@ class _SubjectCard extends StatelessWidget {
             ),
           );
         },
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
               colors: [
-                AppColors.surface,
-                AppColors.primaryLight.withOpacity(0.1),
+                Color(0xFFEEF6EE), // Very light soft green
+                Color(0xFFDEEEDE), // Slightly darker green
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          padding: const EdgeInsets.all(16.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight.withOpacity(0.2),
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFCDE5CD),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   _getIcon(subject.iconAsset),
                   size: 32,
-                  color: AppColors.primary,
+                  color: AppColors.primaryDark,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Text(
                 subject.name,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w800,
                   fontSize: 16,
-                  color: AppColors.onSurface,
+                  color: Colors.black87,
                 ),
               ),
             ],
