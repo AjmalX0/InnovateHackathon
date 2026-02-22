@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/model/student_create_request.dart';
-import '../../core/services/student_service.dart';
+import '../../core/services/api_service.dart';
+import '../../core/services/app_session.dart';
 import '../main/main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,7 +15,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _studentService = StudentService();
+  // ApiService is a singleton — no need to store a reference to dispose
 
   String? _selectedClass;
   String? _selectedLanguage;
@@ -100,41 +101,35 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      setState(() {
-        _isSubmitting = true;
-      });
+      setState(() => _isSubmitting = true);
 
       try {
-        final request = StudentCreateRequest(
+        // Create student via REST API (API only needs name + grade)
+        final studentId = await ApiService.instance.createStudent(
           name: _nameController.text.trim(),
-          grade: grade,
-          language: languageCode,
+          grade: grade.value,
         );
 
-        await _studentService.createStudent(request);
+        // Persist session locally (including language preference)
+        await AppSession.instance.save(
+          id: studentId,
+          name: _nameController.text.trim(),
+          grade: grade.value,
+          language: languageCode.value,
+        );
 
-        if (!mounted) {
-          return;
-        }
-
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const MainScreen()),
         );
       } catch (error) {
-        if (!mounted) {
-          return;
-        }
-
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create student: $error')),
+          SnackBar(content: Text('Failed to create profile: $error')),
         );
       } finally {
-        if (mounted) {
-          setState(() {
-            _isSubmitting = false;
-          });
-        }
+        if (mounted) setState(() => _isSubmitting = false);
       }
     }
   }
@@ -142,7 +137,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _studentService.dispose();
     super.dispose();
   }
 

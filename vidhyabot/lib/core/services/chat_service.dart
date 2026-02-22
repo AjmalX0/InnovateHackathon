@@ -7,7 +7,7 @@ import 'translation_service.dart';
 // IMPORTANT: Replace this with your own Gemini API key or move it to a
 // secure location (e.g., --dart-define, environment variable, etc.).
 // ---------------------------------------------------------------------------
-const _geminiApiKey = 'AIzaSyAejE7yVwhA0h7uzRciLQMvU5zZNiPXHYw';
+const _geminiApiKey = 'AIzaSyDLzrKAuQ5NA4kCrrGom5I7I-5wMkoZdS4';
 
 const _qwenModelUrl =
     'https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/'

@@ -1,19 +1,23 @@
-import 'package:flutter/material.dart';
-
-import '../../core/constants/app_colors.dart';
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
+import '../../core/constants/app_colors.dart';
 import '../../core/services/chat_service.dart';
-import '../../core/services/udp_stt_service.dart';
 import '../../core/services/text_to_speech_service.dart';
+import '../../core/services/udp_stt_service.dart';
 
 enum DoubtLanguageOption { english, malayalam, autoDetect }
 
 class AskDoubtScreen extends StatefulWidget {
-  const AskDoubtScreen({super.key, required this.chapterTitle});
+  const AskDoubtScreen({
+    super.key,
+    required this.chapterTitle,
+    this.subjectName = '',
+  });
 
   final String chapterTitle;
+  final String subjectName;
 
   @override
   State<AskDoubtScreen> createState() => _AskDoubtScreenState();
@@ -31,7 +35,7 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextToSpeechService _ttsService = TextToSpeechService();
   final UdpSttService _sttService = UdpSttService();
-  late final ChatService _chatService;
+  late final ChatService _offlineFallback;
 
   final List<ChatMessage> _messages = [];
 
@@ -43,7 +47,11 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
   bool _isOffline = false;
   bool _isAiTyping = false;
 
+  StreamSubscription<String>? _aiSub;
   late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+
+  /// Index of the AI message currently being spoken (-1 = none).
+  int _speakingIndex = -1;
 
   String _hintText = 'Type a message...';
 
@@ -55,11 +63,14 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
   void initState() {
     super.initState();
 
-    _chatService = ChatService(contextHint: 'Chapter: ${widget.chapterTitle}');
-    _chatService.onProgressChanged = () {
+    // Offline Gemini fallback
+    _offlineFallback = ChatService(
+      contextHint: 'Chapter: ${widget.chapterTitle}',
+    );
+    _offlineFallback.onProgressChanged = () {
       if (mounted) setState(() {});
     };
-    _chatService.init();
+    _offlineFallback.init();
 
     _textController.addListener(_onTextChanged);
     _messages.add(
@@ -78,7 +89,7 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
           _isOffline =
               results.contains(ConnectivityResult.none) || results.isEmpty;
           if (_isOffline && _sttService.isListening) {
-            _toggleRecording(); // auto-stop mic if offline
+            _toggleRecording();
           }
         });
       }
@@ -96,29 +107,25 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
     }
   }
 
-  void _onTextChanged() {
-    setState(() {});
-  }
+  void _onTextChanged() => setState(() {});
 
   Future<void> _initializeEngines() async {
     _log('Initializing speech and TTS engines');
     _isTtsReady = await _ttsService.initialize();
-
+    // Rebuild when speaking state changes so the button icon updates
+    _ttsService.onSpeakingChanged = (speaking) {
+      if (mounted)
+        setState(() {
+          if (!speaking) _speakingIndex = -1;
+        });
+    };
     try {
       _isSpeechReady = await _sttService.initialize();
       _log('Engine init result -> TTS: $_isTtsReady, STT: $_isSpeechReady');
-
-      if (mounted) {
-        setState(() {
-          _isInitializing = false;
-        });
-      }
+      if (mounted) setState(() => _isInitializing = false);
     } catch (error) {
       _log('Initialization exception: $error');
-      if (!mounted) return;
-      setState(() {
-        _isInitializing = false;
-      });
+      if (mounted) setState(() => _isInitializing = false);
     }
   }
 
@@ -142,21 +149,25 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
       _textController.clear();
       _hintText = 'Type a message...';
       _errorMessage = null;
-      // Placeholder AI message that we'll fill token by token
       _messages.add(ChatMessage(text: '', isUser: false));
       _isAiTyping = true;
     });
-
     _scrollToBottom();
 
     final aiIndex = _messages.length - 1;
+    _aiSub?.cancel();
 
-    try {
-      await for (final token in _chatService.sendMessage(
-        text.trim(),
-        isOnline: !_isOffline,
-      )) {
-        if (!mounted) break;
+    // Use ChatService (Gemini online / local model offline) — same engine as
+    // AiChatScreen, which is confirmed working. The context hint injects
+    // the chapter name so answers stay on-topic.
+    final stream = _offlineFallback.sendMessage(
+      text.trim(),
+      isOnline: !_isOffline,
+    );
+
+    _aiSub = stream.listen(
+      (token) {
+        if (!mounted) return;
         setState(() {
           _messages[aiIndex] = ChatMessage(
             text: _messages[aiIndex].text + token,
@@ -164,20 +175,18 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
           );
         });
         _scrollToBottom();
-      }
-    } catch (e) {
-      if (mounted) {
+      },
+      onError: (e) {
+        if (!mounted) return;
         setState(() {
           _messages[aiIndex] = ChatMessage(text: 'Error: $e', isUser: false);
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
           _isAiTyping = false;
         });
-      }
-    }
+      },
+      onDone: () {
+        if (mounted) setState(() => _isAiTyping = false);
+      },
+    );
   }
 
   Future<void> _toggleRecording() async {
@@ -190,11 +199,8 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
           _isTranscribing = true;
           _hintText = 'Thinking...';
         });
-
         final transcribedText = await _sttService.stopListeningAndTranscribe();
-
         if (!mounted) return;
-
         setState(() {
           _isTranscribing = false;
           _hintText = 'Type a message...';
@@ -215,7 +221,6 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
             _errorMessage = 'Unable to stop listening: $error';
           }
         });
-
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted && !_sttService.isListening) {
             setState(() => _hintText = 'Type a message...');
@@ -226,23 +231,18 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
       if (!_isSpeechReady) {
         final hasPerm = await _sttService.hasPermission();
         if (!hasPerm) {
-          setState(() {
-            _errorMessage = 'Microphone permission denied.';
-          });
+          setState(() => _errorMessage = 'Microphone permission denied.');
           return;
         }
         _isSpeechReady = await _sttService.initialize();
       }
-
       try {
         await _sttService.startListening();
         setState(() {
           _hintText = 'Listening...';
           _errorMessage = null;
         });
-        _log('Listening started successfully');
       } catch (error) {
-        _log('Start listening failed: $error');
         setState(() {
           _errorMessage = 'Unable to start listening: $error';
           _hintText = 'Type a message...';
@@ -254,16 +254,20 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
   @override
   void dispose() {
     _connectivitySubscription.cancel();
+    _aiSub?.cancel();
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
     _scrollController.dispose();
     _ttsService.dispose();
     _sttService.dispose();
-    _chatService.dispose();
+    _offlineFallback.dispose();
     super.dispose();
   }
 
-  Widget _buildChatBubble(ChatMessage message) {
+  Widget _buildChatBubble(ChatMessage message, int index) {
+    final showDots = !message.isUser && message.text.isEmpty && _isAiTyping;
+    final bool isThisSpeaking = _speakingIndex == index;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       child: Row(
@@ -288,64 +292,141 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
             ),
           ],
           Flexible(
-            child: message.text.isEmpty && _isAiTyping
-                ? Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 14,
-                      horizontal: 18,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(20),
-                        topRight: Radius.circular(20),
-                        bottomLeft: Radius.circular(4),
-                        bottomRight: Radius.circular(20),
-                      ),
-                    ),
-                    child: const SizedBox(
-                      width: 40,
-                      height: 20,
-                      child: _TypingIndicator(),
-                    ),
-                  )
-                : Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 14,
-                      horizontal: 18,
-                    ),
-                    decoration: BoxDecoration(
-                      color: message.isUser
-                          ? AppColors.primary
-                          : Colors.grey.shade100,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(20),
-                        topRight: const Radius.circular(20),
-                        bottomLeft: message.isUser
-                            ? const Radius.circular(20)
-                            : const Radius.circular(4),
-                        bottomRight: message.isUser
-                            ? const Radius.circular(4)
-                            : const Radius.circular(20),
-                      ),
-                      boxShadow: [
-                        if (!message.isUser)
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 5,
-                            offset: const Offset(0, 2),
+            child: Column(
+              crossAxisAlignment: message.isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                // ── Bubble ──────────────────────────────────────────────
+                showDots
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 18,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(20),
+                            topRight: Radius.circular(20),
+                            bottomLeft: Radius.circular(4),
+                            bottomRight: Radius.circular(20),
                           ),
-                      ],
-                    ),
-                    child: Text(
-                      message.text,
-                      style: TextStyle(
-                        color: message.isUser ? Colors.white : Colors.black87,
-                        fontSize: 15,
-                        height: 1.5,
+                        ),
+                        child: const SizedBox(
+                          width: 40,
+                          height: 18,
+                          child: _DotsIndicator(),
+                        ),
+                      )
+                    : Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 18,
+                        ),
+                        decoration: BoxDecoration(
+                          color: message.isUser
+                              ? AppColors.primary
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(20),
+                            topRight: const Radius.circular(20),
+                            bottomLeft: message.isUser
+                                ? const Radius.circular(20)
+                                : const Radius.circular(4),
+                            bottomRight: message.isUser
+                                ? const Radius.circular(4)
+                                : const Radius.circular(20),
+                          ),
+                          boxShadow: [
+                            if (!message.isUser)
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 5,
+                                offset: const Offset(0, 2),
+                              ),
+                          ],
+                        ),
+                        child: Text(
+                          message.text,
+                          style: TextStyle(
+                            color: message.isUser
+                                ? Colors.white
+                                : Colors.black87,
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+
+                // ── Listen / Stop button (AI bubbles only) ───────────────
+                if (!message.isUser && message.text.isNotEmpty && _isTtsReady)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5, left: 2),
+                    child: GestureDetector(
+                      onTap: () async {
+                        if (isThisSpeaking) {
+                          await _ttsService.stop();
+                          if (mounted) setState(() => _speakingIndex = -1);
+                        } else {
+                          if (_speakingIndex != -1) {
+                            await _ttsService.stop();
+                          }
+                          if (mounted) setState(() => _speakingIndex = index);
+                          try {
+                            await _ttsService.speakAuto(message.text);
+                          } catch (_) {
+                            if (mounted) setState(() => _speakingIndex = -1);
+                          }
+                        }
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isThisSpeaking
+                              ? AppColors.primary.withValues(alpha: 0.12)
+                              : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isThisSpeaking
+                                ? AppColors.primary.withValues(alpha: 0.4)
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isThisSpeaking
+                                  ? Icons.stop_rounded
+                                  : Icons.volume_up_rounded,
+                              size: 14,
+                              color: isThisSpeaking
+                                  ? AppColors.primary
+                                  : Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isThisSpeaking ? 'Stop' : 'Listen',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isThisSpeaking
+                                    ? AppColors.primary
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
+              ],
+            ),
           ),
           if (message.isUser) ...[
             Container(
@@ -409,8 +490,8 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Download progress banner
-                if (_chatService.isDownloading)
+                // Offline-model download banner
+                if (_offlineFallback.isDownloading)
                   Container(
                     width: double.infinity,
                     color: AppColors.primaryLight.withValues(alpha: 0.15),
@@ -422,7 +503,7 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _chatService.downloadStatus,
+                          _offlineFallback.downloadStatus,
                           style: const TextStyle(
                             fontSize: 12,
                             color: AppColors.primaryDark,
@@ -430,8 +511,8 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
                         ),
                         const SizedBox(height: 4),
                         LinearProgressIndicator(
-                          value: _chatService.downloadProgress > 0
-                              ? _chatService.downloadProgress
+                          value: _offlineFallback.downloadProgress > 0
+                              ? _offlineFallback.downloadProgress
                               : null,
                           color: AppColors.primary,
                           backgroundColor: AppColors.primaryLight.withValues(
@@ -460,9 +541,8 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
                     controller: _scrollController,
                     padding: const EdgeInsets.only(top: 16, bottom: 20),
                     itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      return _buildChatBubble(_messages[index]);
-                    },
+                    itemBuilder: (context, index) =>
+                        _buildChatBubble(_messages[index], index),
                   ),
                 ),
                 if (_isAiTyping)
@@ -475,8 +555,8 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         _isOffline
-                            ? '⚙ Local AI is thinking...'
-                            : '✦ Gemini is writing...',
+                            ? '⚙ Offline AI is thinking...'
+                            : '✦ AI Tutor is writing...',
                         style: const TextStyle(
                           fontStyle: FontStyle.italic,
                           color: Colors.grey,
@@ -623,22 +703,23 @@ class _AskDoubtScreenState extends State<AskDoubtScreen> {
   }
 }
 
-/// Simple three-dot typing animation shown while AI streams its first tokens.
-class _TypingIndicator extends StatefulWidget {
-  const _TypingIndicator();
+// ─── Dots typing indicator ─────────────────────────────────────────────────
+
+class _DotsIndicator extends StatefulWidget {
+  const _DotsIndicator();
 
   @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
+  State<_DotsIndicator> createState() => _DotsIndicatorState();
 }
 
-class _TypingIndicatorState extends State<_TypingIndicator>
+class _DotsIndicatorState extends State<_DotsIndicator>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late AnimationController _ac;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _ac = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat();
@@ -646,16 +727,16 @@ class _TypingIndicatorState extends State<_TypingIndicator>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ac.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _controller,
+      animation: _ac,
       builder: (_, __) {
-        final phase = (_controller.value * 3).floor();
+        final phase = (_ac.value * 3).floor();
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
@@ -665,7 +746,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
               height: 7,
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(
-                  alpha: phase == i ? 0.9 : 0.3,
+                  alpha: phase == i ? 0.9 : 0.25,
                 ),
                 shape: BoxShape.circle,
               ),

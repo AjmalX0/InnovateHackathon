@@ -6,8 +6,13 @@ class TextToSpeechService {
 
   final FlutterTts _tts;
   bool _isAvailable = true;
+  bool _isSpeaking = false;
 
   bool get isAvailable => _isAvailable;
+  bool get isSpeaking => _isSpeaking;
+
+  /// Called whenever speaking starts or stops.
+  void Function(bool speaking)? onSpeakingChanged;
 
   Future<bool> initialize() async {
     try {
@@ -19,6 +24,25 @@ class TextToSpeechService {
     try {
       await _tts.setVolume(1.0);
       _isAvailable = true;
+
+      // Track speaking state via completion callbacks
+      _tts.setStartHandler(() {
+        _isSpeaking = true;
+        onSpeakingChanged?.call(true);
+      });
+      _tts.setCompletionHandler(() {
+        _isSpeaking = false;
+        onSpeakingChanged?.call(false);
+      });
+      _tts.setCancelHandler(() {
+        _isSpeaking = false;
+        onSpeakingChanged?.call(false);
+      });
+      _tts.setErrorHandler((_) {
+        _isSpeaking = false;
+        onSpeakingChanged?.call(false);
+      });
+
       return true;
     } on MissingPluginException {
       _isAvailable = false;
@@ -44,7 +68,9 @@ class TextToSpeechService {
 
   Future<void> setLanguage(String languageCode) async {
     if (!_isAvailable) {
-      throw Exception('Text-to-Speech is unavailable on this platform/runtime.');
+      throw Exception(
+        'Text-to-Speech is unavailable on this platform/runtime.',
+      );
     }
 
     final result = await _tts.setLanguage(languageCode);
@@ -55,26 +81,41 @@ class TextToSpeechService {
 
   Future<void> setPitch(double pitch) {
     if (!_isAvailable) {
-      throw Exception('Text-to-Speech is unavailable on this platform/runtime.');
+      throw Exception(
+        'Text-to-Speech is unavailable on this platform/runtime.',
+      );
     }
     return _tts.setPitch(pitch.clamp(0.5, 2.0));
   }
 
   Future<void> setSpeechRate(double speechRate) {
     if (!_isAvailable) {
-      throw Exception('Text-to-Speech is unavailable on this platform/runtime.');
+      throw Exception(
+        'Text-to-Speech is unavailable on this platform/runtime.',
+      );
     }
     return _tts.setSpeechRate(speechRate.clamp(0.1, 1.0));
   }
 
   Future<void> speak(String text) async {
     if (!_isAvailable) {
-      throw Exception('Text-to-Speech is unavailable on this platform/runtime.');
+      throw Exception(
+        'Text-to-Speech is unavailable on this platform/runtime.',
+      );
     }
+    if (text.trim().isEmpty) throw Exception('Nothing to speak');
+    await _tts.speak(text);
+  }
 
-    if (text.trim().isEmpty) {
-      throw Exception('Nothing to speak');
-    }
+  /// Speak [text] with automatic language detection.
+  /// Detects Malayalam Unicode (U+0D00–U+0D7F) and sets
+  /// lang to 'ml-IN', otherwise 'en-IN'.
+  Future<void> speakAuto(String text) async {
+    if (!_isAvailable || text.trim().isEmpty) return;
+    final isMalayalam = RegExp(r'[\u0D00-\u0D7F]').hasMatch(text);
+    try {
+      await _tts.setLanguage(isMalayalam ? 'ml-IN' : 'en-IN');
+    } catch (_) {}
     await _tts.speak(text);
   }
 

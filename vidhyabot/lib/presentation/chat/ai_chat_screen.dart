@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/chat_service.dart';
+import '../../core/services/text_to_speech_service.dart';
 
 class _ChatMessage {
   final String text;
@@ -28,6 +29,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   bool _isOnline = true;
   bool _isAiTyping = false;
+  bool _ttsReady = false;
+  int _speakingIndex = -1;
+  final TextToSpeechService _tts = TextToSpeechService();
 
   late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
 
@@ -39,6 +43,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
       if (mounted) setState(() {});
     };
     _chatService.init();
+
+    // Initialise TTS
+    _tts.initialize().then((ok) {
+      if (mounted) setState(() => _ttsReady = ok);
+    });
+    _tts.onSpeakingChanged = (speaking) {
+      if (mounted)
+        setState(() {
+          if (!speaking) _speakingIndex = -1;
+        });
+    };
 
     _controller.addListener(() => setState(() {}));
 
@@ -126,12 +141,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
     _controller.dispose();
     _scrollController.dispose();
     _chatService.dispose();
+    _tts.dispose();
     super.dispose();
   }
 
-  Widget _buildBubble(_ChatMessage msg) {
+  Widget _buildBubble(_ChatMessage msg, int index) {
     final isUser = msg.isUser;
     final showTypingDots = !isUser && msg.text.isEmpty && _isAiTyping;
+    final bool isThisSpeaking = _speakingIndex == index;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
@@ -157,42 +174,118 @@ class _AiChatScreenState extends State<AiChatScreen> {
             ),
           ],
           Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.75,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isUser ? AppColors.primary : Colors.grey.shade100,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20),
-                  topRight: const Radius.circular(20),
-                  bottomLeft: isUser
-                      ? const Radius.circular(20)
-                      : const Radius.circular(4),
-                  bottomRight: isUser
-                      ? const Radius.circular(4)
-                      : const Radius.circular(20),
-                ),
-                boxShadow: [
-                  if (!isUser)
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+            child: Column(
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                // ── Bubble ────────────────────────────────────────────
+                Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isUser ? AppColors.primary : Colors.grey.shade100,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(20),
+                      topRight: const Radius.circular(20),
+                      bottomLeft: isUser
+                          ? const Radius.circular(20)
+                          : const Radius.circular(4),
+                      bottomRight: isUser
+                          ? const Radius.circular(4)
+                          : const Radius.circular(20),
                     ),
-                ],
-              ),
-              child: showTypingDots
-                  ? const _DotsIndicator()
-                  : Text(
-                      msg.text,
-                      style: TextStyle(
-                        color: isUser ? Colors.white : Colors.black87,
-                        fontSize: 15,
-                        height: 1.5,
+                    boxShadow: [
+                      if (!isUser)
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                    ],
+                  ),
+                  child: showTypingDots
+                      ? const _DotsIndicator()
+                      : Text(
+                          msg.text,
+                          style: TextStyle(
+                            color: isUser ? Colors.white : Colors.black87,
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
+                ),
+
+                // ── Listen / Stop button (AI only) ─────────────────────
+                if (!isUser && msg.text.isNotEmpty && _ttsReady)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5, left: 2),
+                    child: GestureDetector(
+                      onTap: () async {
+                        if (isThisSpeaking) {
+                          await _tts.stop();
+                          if (mounted) setState(() => _speakingIndex = -1);
+                        } else {
+                          if (_speakingIndex != -1) await _tts.stop();
+                          if (mounted) setState(() => _speakingIndex = index);
+                          try {
+                            await _tts.speakAuto(msg.text);
+                          } catch (_) {
+                            if (mounted) setState(() => _speakingIndex = -1);
+                          }
+                        }
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isThisSpeaking
+                              ? AppColors.primary.withValues(alpha: 0.12)
+                              : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isThisSpeaking
+                                ? AppColors.primary.withValues(alpha: 0.4)
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isThisSpeaking
+                                  ? Icons.stop_rounded
+                                  : Icons.volume_up_rounded,
+                              size: 14,
+                              color: isThisSpeaking
+                                  ? AppColors.primary
+                                  : Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isThisSpeaking ? 'Stop' : 'Listen',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isThisSpeaking
+                                    ? AppColors.primary
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
+                  ),
+              ],
             ),
           ),
           if (isUser) ...[
@@ -379,7 +472,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
               controller: _scrollController,
               padding: const EdgeInsets.only(top: 12, bottom: 8),
               itemCount: _messages.length,
-              itemBuilder: (_, i) => _buildBubble(_messages[i]),
+              itemBuilder: (_, i) => _buildBubble(_messages[i], i),
             ),
           ),
           if (_isAiTyping)

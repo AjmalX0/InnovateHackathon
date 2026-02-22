@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/app_session.dart';
+import '../../core/services/socket_service.dart';
 import '../../data/models/subject_model.dart';
 import 'ask_doubt_screen.dart';
 import 'chapter_quiz_screen.dart';
@@ -14,49 +17,16 @@ class ChapterDetailsScreen extends StatelessWidget {
     required this.subjectName,
   });
 
-  void _showNaiveLanguageResponse(BuildContext context, String actionType) {
-    // Placeholder for actual AI integration
+  /// Opens the real-time AI learning bottom sheet.
+  void _startLearning(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                actionType == 'learn'
-                    ? 'Learning: ${chapter.title}'
-                    : 'Ask a Doubt: ${chapter.title}',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primaryDark,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                actionType == 'learn'
-                    ? 'Namaskaram! Innu nammal padikkan pokunnathu ${chapter.title} aanu. (Hello! Today we are going to learn ${chapter.title}.)\n\n[Full AI generated explanation in preferred language goes here...]'
-                    : 'Enthokkeyanu doubt? (What is your doubt?)\n\n[Voice or Text input UI would go here to accept the student\'s doubt in their preferred language.]',
-                style: const TextStyle(fontSize: 16, height: 1.5),
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (_) =>
+          _LearningSheet(chapter: chapter, subjectName: subjectName),
     );
   }
 
@@ -89,7 +59,7 @@ class ChapterDetailsScreen extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     colors: [AppColors.primary, AppColors.primaryLight],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -128,7 +98,6 @@ class ChapterDetailsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 48),
 
-            // Options Section
             Text(
               'How would you like to proceed?',
               textAlign: TextAlign.center,
@@ -139,7 +108,6 @@ class ChapterDetailsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Action Cards Row 1
             Row(
               children: [
                 Expanded(
@@ -148,7 +116,7 @@ class ChapterDetailsScreen extends StatelessWidget {
                     title: 'Learn',
                     subtitle: 'Full chapter',
                     color: AppColors.primary,
-                    onTap: () => _showNaiveLanguageResponse(context, 'learn'),
+                    onTap: () => _startLearning(context),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -164,6 +132,7 @@ class ChapterDetailsScreen extends StatelessWidget {
                         MaterialPageRoute(
                           builder: (_) => AskDoubtScreen(
                             chapterTitle: chapter.title,
+                            subjectName: subjectName,
                           ),
                         ),
                       );
@@ -174,7 +143,6 @@ class ChapterDetailsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // Action Cards Row 2 (Quiz)
             _ActionCard(
               icon: Icons.quiz_outlined,
               title: 'Take Chapter Quiz',
@@ -195,6 +163,177 @@ class ChapterDetailsScreen extends StatelessWidget {
     );
   }
 }
+
+// ─── Real-time Learning Sheet ──────────────────────────────────────────────
+
+class _LearningSheet extends StatefulWidget {
+  final ChapterModel chapter;
+  final String subjectName;
+
+  const _LearningSheet({required this.chapter, required this.subjectName});
+
+  @override
+  State<_LearningSheet> createState() => _LearningSheetState();
+}
+
+class _LearningSheetState extends State<_LearningSheet> {
+  final ScrollController _scroll = ScrollController();
+  final StringBuffer _content = StringBuffer();
+  StreamSubscription<String>? _sub;
+  bool _isStreaming = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _startStream();
+  }
+
+  void _startStream() {
+    final studentId = AppSession.instance.studentId ?? 'guest';
+    final stream = SocketService.instance.startLearning(
+      studentId: studentId,
+      subject: widget.subjectName.toLowerCase(),
+      chapter: widget.chapter.title.toLowerCase().replaceAll(' ', '-'),
+    );
+
+    _sub = stream.listen(
+      (token) {
+        if (!mounted) return;
+        setState(() => _content.write(token));
+        _scrollToBottom();
+      },
+      onError: (e) {
+        if (!mounted) return;
+        setState(() {
+          _isStreaming = false;
+          _error = e.toString();
+        });
+      },
+      onDone: () {
+        if (mounted) setState(() => _isStreaming = false);
+      },
+    );
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double sh = MediaQuery.of(context).size.height;
+    return Container(
+      height: sh * 0.75,
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Text(
+            'Learning: ${widget.chapter.title}',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: AppColors.primaryDark,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            widget.subjectName,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          ),
+          const Divider(height: 24),
+          // content area
+          Expanded(
+            child: _error != null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: AppColors.error,
+                          size: 40,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppColors.error),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView(
+                    controller: _scroll,
+                    children: [
+                      Text(
+                        _content.toString(),
+                        style: const TextStyle(fontSize: 15, height: 1.6),
+                      ),
+                      if (_isStreaming) ...[
+                        const SizedBox(height: 12),
+                        const LinearProgressIndicator(),
+                        const SizedBox(height: 4),
+                        Text(
+                          '✦ AI Tutor is explaining...',
+                          style: TextStyle(
+                            color: Colors.grey.shade500,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Action Card ──────────────────────────────────────────────────────────
 
 class _ActionCard extends StatelessWidget {
   final IconData icon;
