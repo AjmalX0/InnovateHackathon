@@ -35,6 +35,31 @@ export class AiService {
         this.embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
     }
 
+    async transcribeAudio(audioBuffer: Buffer, language: 'ml' | 'en' = 'ml'): Promise<string> {
+        const languageHint = language === 'ml'
+            ? 'The audio is in Malayalam (മലയാളം). Transcribe it exactly as spoken.'
+            : 'The audio is in English. Transcribe it exactly as spoken.';
+
+        try {
+            const result = await this.model.generateContent([
+                {
+                    inlineData: {
+                        mimeType: 'audio/wav',
+                        data: audioBuffer.toString('base64'),
+                    },
+                },
+                `${languageHint} Return ONLY the transcribed text with no explanations, labels, or punctuation changes.`,
+            ]);
+
+            const text = result.response.text().trim();
+            this.logger.log(`Audio transcribed via Gemini: "${text.substring(0, 80)}"`);
+            return text;
+        } catch (error) {
+            this.logger.error(`Gemini audio transcription failed: ${(error as Error).message}`);
+            throw new InternalServerErrorException('Failed to transcribe audio');
+        }
+    }
+
     async generateEmbedding(text: string): Promise<number[]> {
         try {
             const result = await this.embedModel.embedContent(text);
