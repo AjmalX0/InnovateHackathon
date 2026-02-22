@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: vidyabot-backend
+    env: node
+    region: singapore # Change this depending on where your users are based (e.g. oregon, frankfurt, etc)
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # Whisper local models are completely optional depending on if you want audio processing
+      - key: WHISPER_MODEL_PATH
+        value: "optional_override"
+      - key: WHISPER_BINARY_PATH
+        value: "optional_override"
