@@ -74,7 +74,10 @@ export class SpeechService implements OnModuleInit, OnModuleDestroy {
         const { audioBuffer, job } = this.jobQueue.shift()!;
         this.workerPool[freeIdx].busy = true;
 
-        const workerPath = join(__dirname, '..', 'workers', 'speech.worker.js');
+        // __dirname at runtime = dist/modules/speech/
+        // speech.worker.js compiles to  dist/workers/speech.worker.js
+        // so we need two levels up: dist/modules/speech → dist/modules → dist
+        const workerPath = join(__dirname, '..', '..', 'workers', 'speech.worker.js');
 
         const worker = new Worker(workerPath, {
             workerData: {

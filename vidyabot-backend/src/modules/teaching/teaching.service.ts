@@ -31,6 +31,32 @@ export class TeachingService {
         private readonly aiService: AiService,
     ) { }
 
+    /**
+     * Returns all available subjects and their chapters for the student's grade.
+     * Used by the frontend so the student can pick what to study before starting a session.
+     */
+    async browseContent(studentId: string): Promise<{
+        studentId: string;
+        grade: number;
+        subjects: { name: string; chapters: string[] }[];
+    }> {
+        const student = await this.studentsService.getProfile(studentId);
+        const subjectNames = await this.syllabusService.getAvailableSubjects(student.grade);
+
+        const subjects = await Promise.all(
+            subjectNames.map(async (name) => {
+                const chapters = await this.syllabusService.getAvailableChapters(student.grade, name);
+                return { name, chapters };
+            }),
+        );
+
+        this.logger.log(
+            `Browsed content for student ${studentId} (grade=${student.grade}): ${subjects.length} subjects`,
+        );
+
+        return { studentId, grade: student.grade, subjects };
+    }
+
     async startTeachingSession(
         studentId: string,
         subject: string,
@@ -76,13 +102,17 @@ export class TeachingService {
         }
 
         // 4. Cache miss — fetch syllabus via RAG
+        // Use a rich query string so the embedding search finds the most relevant chunks:
+        // subject + chapter name + intent = much better cosine similarity match
         this.logger.log(`Cache MISS — fetching syllabus via RAG and generating via AI`);
 
+        const ragQuery = `${subject} ${chapter} key concepts explanation for grade ${student.grade} student`;
+
         let syllabusChunks = await this.syllabusService.searchRelevantChunks(
-            chapter,
+            ragQuery,
             student.grade,
             subject,
-            4
+            6,
         );
 
         // Fallback if RAG returned nothing (e.g. pgvector not installed or textbook not uploaded)
@@ -101,6 +131,8 @@ export class TeachingService {
         const aiResponse = await this.aiService.generateTeaching(
             student,
             syllabusChunks,
+            subject,
+            chapter,
             'ml',
             cluster,
         );

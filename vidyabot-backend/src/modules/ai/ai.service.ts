@@ -70,6 +70,8 @@ export class AiService {
     async generateTeaching(
         student: StudentProfile,
         syllabusChunks: SyllabusChunk[],
+        subject: string,
+        chapter: string,
         language: 'ml' | 'en' = 'ml',
         cluster: CapabilityCluster = CapabilityCluster.MEDIUM,
     ): Promise<TeachingResponse> {
@@ -79,9 +81,10 @@ export class AiService {
                 ? 'Respond ENTIRELY in Malayalam (മലയാളം) script. Do not use English except for technical terms that have no Malayalam equivalent.'
                 : 'Respond in English.';
 
-        const syllabusContent = syllabusChunks
-            .map((c, i) => `Chunk ${i + 1}:\n${c.content}`)
-            .join('\n\n');
+        const syllabusContent =
+            syllabusChunks.length > 0
+                ? syllabusChunks.map((c, i) => `Chunk ${i + 1}:\n${c.content}`).join('\n\n')
+                : 'No textbook content available. Use your general knowledge for this chapter.';
 
         const prompt = `
 You are VidyaBot, an expert AI tutor for Kerala school students.
@@ -91,19 +94,27 @@ Student Information:
 - Grade: ${student.grade}
 - Capability Level: ${cluster}
 
+Current Lesson:
+- Subject: ${subject}
+- Chapter: ${chapter}
+
+CRITICAL INSTRUCTION: You must ONLY teach the content of "${chapter}" from the subject "${subject}".
+Do NOT drift into other chapters, other subjects, or unrelated topics.
+Every sentence you write must be directly about this chapter.
+
 Teaching Style: ${tone}
 
 Language Instruction: ${languageInstruction}
 
-Syllabus Content to Teach:
+Textbook Content for "${chapter}" (use this as your primary source):
 ${syllabusContent}
 
-Generate a complete teaching block for this student. Return a valid JSON object with exactly these fields:
+Generate a complete teaching block strictly about "${chapter}". Return a valid JSON object with exactly these fields:
 {
-  "introduction": "An engaging opening that grabs attention (2-3 sentences)",
-  "main_explanation": "The core lesson content adapted to the student's level",
-  "summary": "A brief recap of the key points (3-5 bullet points)",
-  "follow_up_question": "One question to check understanding"
+  "introduction": "An engaging opening about ${chapter} that grabs the student's attention (2-3 sentences)",
+  "main_explanation": "The full lesson for ${chapter} adapted to the student's level — cover all key concepts from the textbook content above",
+  "summary": "A brief recap of the key points of ${chapter} (3-5 bullet points)",
+  "follow_up_question": "One question specifically about ${chapter} to check the student's understanding"
 }
 
 Return ONLY the JSON object, no markdown formatting, no code blocks.
