@@ -102,13 +102,17 @@ export class TeachingService {
         }
 
         // 4. Cache miss — fetch syllabus via RAG
+        // Use a rich query string so the embedding search finds the most relevant chunks:
+        // subject + chapter name + intent = much better cosine similarity match
         this.logger.log(`Cache MISS — fetching syllabus via RAG and generating via AI`);
 
+        const ragQuery = `${subject} ${chapter} key concepts explanation for grade ${student.grade} student`;
+
         let syllabusChunks = await this.syllabusService.searchRelevantChunks(
-            chapter,
+            ragQuery,
             student.grade,
             subject,
-            4
+            6,
         );
 
         // Fallback if RAG returned nothing (e.g. pgvector not installed or textbook not uploaded)

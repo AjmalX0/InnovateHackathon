@@ -6,7 +6,6 @@ import { ChapterCatalog } from './entities/chapter-catalog.entity';
 import { AddSubjectDto } from './dto/add-subject.dto';
 import { AddChapterDto } from './dto/add-chapter.dto';
 import { AiService } from '../ai/ai.service';
-import * as pdfParse from 'pdf-parse';
 
 @Injectable()
 export class SyllabusService {
@@ -166,11 +165,11 @@ export class SyllabusService {
         const { data, error } = await this.supabase
             .from('syllabus_chunks')
             .select('id, grade, subject, chapter, content, chunk_order')
-            .lte('grade', grade)
-            .eq('chapter', chapter)
+            .eq('grade', grade)
             .eq('subject', subject)
+            .eq('chapter', chapter)
             .order('chunk_order', { ascending: true })
-            .limit(3);
+            .limit(6);
 
         if (error) {
             this.logger.error(`Error fetching chunks: ${error.message}`);
@@ -208,37 +207,81 @@ export class SyllabusService {
         }
     }
 
+    /**
+     * Splits raw text into overlapping sentence-aware chunks.
+     * Each chunk is ~CHUNK_SIZE chars; consecutive chunks share OVERLAP chars
+     * so a concept that spans a boundary is never split across two embeddings.
+     */
+    private buildChunks(text: string, chunkSize = 1200, overlap = 200): string[] {
+        // Normalise whitespace
+        const cleaned = text.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
+
+        // Split on sentence boundaries (. ! ?) to avoid cutting mid-sentence
+        const sentences = cleaned.match(/[^.!?]+[.!?]+['"\)\]]?\s*/g) ?? [cleaned];
+
+        const chunks: string[] = [];
+        let current = '';
+        let overlapBuffer = '';
+
+        for (const sentence of sentences) {
+            if ((current + sentence).length > chunkSize && current.trim().length > 0) {
+                chunks.push(current.trim());
+                // Start next chunk with the overlap tail of the current chunk
+                overlapBuffer = current.slice(-overlap);
+                current = overlapBuffer + sentence;
+            } else {
+                current += sentence;
+            }
+        }
+
+        if (current.trim().length > 30) {
+            chunks.push(current.trim());
+        }
+
+        return chunks;
+    }
+
     async ingestTextbook(fileBuffer: Buffer, grade: number, subject: string, chapter: string): Promise<void> {
         try {
-            // Use local require for CommonJS module
-            const pdfParse = require('pdf-parse');
-            const data = await pdfParse(fileBuffer);
-            const text = data.text;
+            // pdf-parse is a CommonJS module — require() avoids ESM interop issues
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>;
+            const { text } = await pdfParse(fileBuffer);
 
-            // Clean and Chunk the text
-            const CHUNK_SIZE = 1000;
-            let chunkOrder = 1;
+            // Delete any previous chunks for this exact grade/subject/chapter before re-ingesting
+            await this.supabase
+                .from('syllabus_chunks')
+                .delete()
+                .eq('grade', grade)
+                .eq('subject', subject)
+                .eq('chapter', chapter);
 
-            this.logger.log(`Parsed PDF text length: ${text.length}. Starting embedding & ingestion...`);
+            const chunks = this.buildChunks(text);
+            this.logger.log(
+                `PDF parsed: ${text.length} chars → ${chunks.length} chunks. Embedding for grade=${grade} subject=${subject} chapter=${chapter}...`,
+            );
 
-            for (let i = 0; i < text.length; i += CHUNK_SIZE) {
-                const chunkText = text.substring(i, i + CHUNK_SIZE);
-                if (chunkText.trim().length < 10) continue; // Skip very small or empty chunks
-
-                const embedding = await this.aiService.generateEmbedding(chunkText);
+            for (let i = 0; i < chunks.length; i++) {
+                const chunkText = chunks[i];
+                // Prepend metadata so the embedding also encodes subject/chapter context
+                const textToEmbed = `Grade ${grade} | ${subject} | ${chapter}\n\n${chunkText}`;
+                const embedding = await this.aiService.generateEmbedding(textToEmbed);
 
                 const { error } = await this.supabase.from('syllabus_chunks').insert({
                     grade,
                     subject,
                     chapter,
                     content: chunkText,
-                    chunk_order: chunkOrder++,
-                    embedding
+                    chunk_order: i + 1,
+                    embedding,
                 });
 
                 if (error) throw error;
             }
-            this.logger.log(`Successfully ingested textbook for Grade ${grade}, Subject ${subject}, Chapter ${chapter}`);
+
+            this.logger.log(
+                `✅ Ingested ${chunks.length} chunks for grade=${grade} subject=${subject} chapter=${chapter}`,
+            );
         } catch (error) {
             this.logger.error(`Failed to ingest textbook: ${(error as Error).message}`);
             throw new InternalServerErrorException('Failed to process and ingest textbook');
