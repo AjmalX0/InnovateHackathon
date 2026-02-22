@@ -1,24 +1,21 @@
 import { Module, Global } from '@nestjs/common';
-import { Pool } from 'pg';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Global()
 @Module({
     providers: [
         {
-            provide: 'DATABASE_POOL',
-            useFactory: () => {
-                return new Pool({
-                    host: 'db.mqkzgqaulxznlvnfggjb.supabase.co',
-                    port: 5432,
-                    user: 'postgres',
-                    password: 'Innovate@1234@Hackathon',
-                    database: 'postgres',
-                    ssl: { rejectUnauthorized: false },
-                    max: 10,
-                });
+            provide: 'SUPABASE_CLIENT',
+            useFactory: (): SupabaseClient => {
+                const url = process.env.SUPABASE_URL || '';
+                const key = process.env.SUPABASE_KEY || '';
+                if (!url || !key) {
+                    throw new Error('SUPABASE_URL and SUPABASE_KEY must be defined in the environment variables.');
+                }
+                return createClient(url, key);
             },
         },
     ],
-    exports: ['DATABASE_POOL'],
+    exports: ['SUPABASE_CLIENT'],
 })
 export class DatabaseModule { }

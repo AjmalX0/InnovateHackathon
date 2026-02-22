@@ -1,5 +1,5 @@
 import { Injectable, Logger, BadRequestException, Inject } from '@nestjs/common';
-import { Pool } from 'pg';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
 import { MessageRole, InputType } from './entities/message.entity';
 import { Message } from './entities/message.entity';
@@ -22,7 +22,7 @@ export class ChatService {
     private readonly logger = new Logger(ChatService.name);
 
     constructor(
-        @Inject('DATABASE_POOL') private readonly pool: Pool,
+        @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
         private readonly studentsService: StudentsService,
         private readonly capabilityService: CapabilityService,
         private readonly speechService: SpeechService,
@@ -64,15 +64,17 @@ export class ChatService {
 
         // 2. Load student and compute capability cluster
         const student = await this.studentsService.getProfile(studentId);
-        const recentMessagesRes = await this.pool.query(
-            `SELECT * FROM messages WHERE student_id = $1 ORDER BY created_at DESC LIMIT 20`,
-            [studentId]
-        );
-        const recentMessages = recentMessagesRes.rows;
+
+        const { data: recentMessages, error: messagesErr } = await this.supabase
+            .from('messages')
+            .select('*')
+            .eq('student_id', studentId)
+            .order('created_at', { ascending: false })
+            .limit(20);
 
         let cluster: CapabilityCluster;
-        if (recentMessages.length > 0) {
-            cluster = this.capabilityService.getClusterFromMessages(recentMessages);
+        if (recentMessages && recentMessages.length > 0) {
+            cluster = this.capabilityService.getClusterFromMessages(recentMessages as Message[]);
         } else {
             cluster = this.capabilityService.getCluster(student.capability_score);
         }
@@ -81,23 +83,30 @@ export class ChatService {
         const questionHash = this.hashQuestion(questionText);
 
         // 4. Query capability_responses cache
-        const cachedRes = await this.pool.query(
-            `SELECT * FROM capability_responses WHERE chapter = $1 AND capability_cluster = $2 AND question_hash = $3 LIMIT 1`,
-            [chapter, cluster, questionHash]
-        );
-        const cached = cachedRes.rows[0];
+        const { data: cached, error: cachedErr } = await this.supabase
+            .from('capability_responses')
+            .select('*')
+            .eq('chapter', chapter)
+            .eq('capability_cluster', cluster)
+            .eq('question_hash', questionHash)
+            .limit(1)
+            .single();
 
         let doubtResponse: DoubtResponse;
         let fromCache = false;
 
-        if (cached) {
+        if (cached && !cachedErr) {
             // 5. Cache HIT — increment usage and return
             this.logger.log(`Cache HIT for doubt (hash=${questionHash}), usage_count=${cached.usage_count + 1}`);
-            await this.pool.query(
-                `UPDATE capability_responses SET usage_count = $1 WHERE id = $2`,
-                [cached.usage_count + 1, cached.id]
-            );
-            doubtResponse = JSON.parse(cached.response_text) as DoubtResponse;
+
+            await this.supabase
+                .from('capability_responses')
+                .update({ usage_count: cached.usage_count + 1 })
+                .eq('id', cached.id);
+
+            doubtResponse = typeof cached.response_text === 'string'
+                ? JSON.parse(cached.response_text)
+                : cached.response_text as DoubtResponse;
             fromCache = true;
         } else {
             // 6. Cache MISS — fetch relevant textbook chunks via RAG and call AI
@@ -111,7 +120,7 @@ export class ChatService {
             );
 
             const ragContext = relevantChunks.length > 0
-                ? relevantChunks.map(c => c.content).join('\\n\\n')
+                ? relevantChunks.map(c => c.content).join('\n\n')
                 : `General conceptual knowledge of chapter: ${chapter}`;
 
             this.logger.log(`Calling AI for doubt resolution with context size = ${ragContext.length}`);
@@ -125,39 +134,60 @@ export class ChatService {
             );
 
             // Save to capability_responses
-            await this.pool.query(
-                `INSERT INTO capability_responses (grade, chapter, capability_cluster, question_hash, response_text, usage_count)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                [student.grade, chapter, cluster, questionHash, JSON.stringify(doubtResponse), 1]
-            );
+            await this.supabase
+                .from('capability_responses')
+                .insert({
+                    grade: student.grade,
+                    chapter,
+                    capability_cluster: cluster,
+                    question_hash: questionHash,
+                    response_text: JSON.stringify(doubtResponse),
+                    usage_count: 1
+                });
         }
 
         // 7. Always save the student message to messages table
-        const studentMessageRes = await this.pool.query(
-            `INSERT INTO messages (student_id, role, content, input_type) VALUES ($1, $2, $3, $4) RETURNING *`,
-            [studentId, MessageRole.STUDENT, questionText, inputType === 'voice' ? InputType.VOICE : InputType.TEXT]
-        );
-        const savedMessage = studentMessageRes.rows[0];
+        const { data: savedMessage, error: studentMsgErr } = await this.supabase
+            .from('messages')
+            .insert({
+                student_id: studentId,
+                role: MessageRole.STUDENT,
+                content: questionText,
+                input_type: inputType === 'voice' ? InputType.VOICE : InputType.TEXT
+            })
+            .select()
+            .single();
 
         // Also save the tutor response
-        await this.pool.query(
-            `INSERT INTO messages (student_id, role, content, input_type) VALUES ($1, $2, $3, $4)`,
-            [studentId, MessageRole.TUTOR, doubtResponse.answer, InputType.TEXT]
-        );
+        await this.supabase
+            .from('messages')
+            .insert({
+                student_id: studentId,
+                role: MessageRole.TUTOR,
+                content: doubtResponse.answer,
+                input_type: InputType.TEXT
+            });
 
         this.logger.log(`Doubt handled for student ${studentId}, fromCache=${fromCache}`);
         return {
             response: doubtResponse,
             fromCache,
-            messageId: savedMessage.id,
+            messageId: savedMessage?.id || 'unknown',
         };
     }
 
     async getRecentMessages(studentId: string, limit = 20): Promise<Message[]> {
-        const res = await this.pool.query(
-            `SELECT * FROM messages WHERE student_id = $1 ORDER BY created_at DESC LIMIT $2`,
-            [studentId, limit]
-        );
-        return res.rows;
+        const { data, error } = await this.supabase
+            .from('messages')
+            .select('*')
+            .eq('student_id', studentId)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) {
+            this.logger.error(`Error fetching messages: ${error.message}`);
+            return [];
+        }
+        return data as Message[];
     }
 }

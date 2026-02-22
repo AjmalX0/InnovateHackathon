@@ -1,57 +1,60 @@
 import { Injectable, Logger, Inject, InternalServerErrorException } from '@nestjs/common';
-import { Pool } from 'pg';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { SyllabusChunk } from './entities/syllabus-chunk.entity';
 import { AiService } from '../ai/ai.service';
+import * as pdfParse from 'pdf-parse';
 
 @Injectable()
 export class SyllabusService {
     private readonly logger = new Logger(SyllabusService.name);
 
     constructor(
-        @Inject('DATABASE_POOL') private readonly pool: Pool,
+        @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
         private readonly aiService: AiService,
     ) { }
 
     async getChunks(grade: number, subject: string, chapter: string): Promise<SyllabusChunk[]> {
-        const query = `
-            SELECT id, grade, subject, chapter, content, chunk_order 
-            FROM syllabus_chunks
-            WHERE grade <= $1 AND chapter = $2 AND subject = $3
-            ORDER BY chunk_order ASC
-            LIMIT 3;
-        `;
-        const result = await this.pool.query(query, [grade, chapter, subject]);
-        const chunks = result.rows;
+        const { data, error } = await this.supabase
+            .from('syllabus_chunks')
+            .select('id, grade, subject, chapter, content, chunk_order')
+            .lte('grade', grade)
+            .eq('chapter', chapter)
+            .eq('subject', subject)
+            .order('chunk_order', { ascending: true })
+            .limit(3);
+
+        if (error) {
+            this.logger.error(`Error fetching chunks: ${error.message}`);
+            return [];
+        }
 
         this.logger.debug(
-            `Found ${chunks.length} syllabus chunks for grade=${grade}, subject=${subject}, chapter=${chapter}`,
+            `Found ${data.length} syllabus chunks for grade=${grade}, subject=${subject}, chapter=${chapter}`,
         );
-        return chunks;
+        return data as SyllabusChunk[];
     }
 
     async searchRelevantChunks(queryText: string, grade: number, subject: string, limit = 3): Promise<SyllabusChunk[]> {
         try {
             // Generate embedding for the search query
             const queryEmbedding = await this.aiService.generateEmbedding(queryText);
-            const pgVectorStr = '[' + queryEmbedding.join(',') + ']';
 
-            // Perform Cosine Similarity Search using pgvector (<=> operator)
-            const query = `
-                SELECT id, grade, subject, chapter, content, chunk_order,
-                    1 - (embedding <=> $1::vector) AS similarity
-                FROM syllabus_chunks
-                WHERE grade <= $2 AND subject = $3
-                ORDER BY embedding <=> $1::vector
-                LIMIT $4;
-            `;
-            const result = await this.pool.query(query, [pgVectorStr, grade, subject, limit]);
+            // Perform Cosine Similarity Search via Supabase RPC Call
+            const { data, error } = await this.supabase.rpc('match_syllabus_chunks', {
+                query_embedding: queryEmbedding,
+                match_grade: grade,
+                match_subject: subject,
+                match_limit: limit
+            });
+
+            if (error) throw error;
 
             this.logger.debug(
-                `Found ${result.rows.length} relevant syllabus chunks via RAG similarity for grade=${grade}, subject=${subject}`,
+                `Found ${data?.length || 0} relevant syllabus chunks via RAG similarity for grade=${grade}, subject=${subject}`,
             );
-            return result.rows;
+            return (data || []) as SyllabusChunk[];
         } catch (error) {
-            this.logger.warn(`RAG search failed (maybe pgvector is missing): ${(error as Error).message}`);
+            this.logger.warn(`RAG search failed (make sure match_syllabus_chunks RPC exists): ${(error as Error).message}`);
             return [];
         }
     }
@@ -74,13 +77,17 @@ export class SyllabusService {
                 if (chunkText.trim().length < 10) continue; // Skip very small or empty chunks
 
                 const embedding = await this.aiService.generateEmbedding(chunkText);
-                const pgVectorStr = '[' + embedding.join(',') + ']';
 
-                await this.pool.query(`
-                    INSERT INTO syllabus_chunks (grade, subject, chapter, content, chunk_order, embedding)
-                    VALUES ($1, $2, $3, $4, $5, $6::vector)
-                `, [grade, subject, chapter, chunkText, chunkOrder++, pgVectorStr]);
+                const { error } = await this.supabase.from('syllabus_chunks').insert({
+                    grade,
+                    subject,
+                    chapter,
+                    content: chunkText,
+                    chunk_order: chunkOrder++,
+                    embedding
+                });
 
+                if (error) throw error;
             }
             this.logger.log(`Successfully ingested textbook for Grade ${grade}, Subject ${subject}, Chapter ${chapter}`);
         } catch (error) {

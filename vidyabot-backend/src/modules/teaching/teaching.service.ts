@@ -4,7 +4,7 @@ import {
     NotFoundException,
     Inject
 } from '@nestjs/common';
-import { Pool } from 'pg';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { TeachingBlock } from './entities/teaching-block.entity';
 import { StudentsService } from '../students/students.service';
 import { CapabilityService } from '../capability/capability.service';
@@ -24,7 +24,7 @@ export class TeachingService {
     private readonly logger = new Logger(TeachingService.name);
 
     constructor(
-        @Inject('DATABASE_POOL') private readonly pool: Pool,
+        @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
         private readonly studentsService: StudentsService,
         private readonly capabilityService: CapabilityService,
         private readonly syllabusService: SyllabusService,
@@ -52,17 +52,23 @@ export class TeachingService {
             `Starting teaching session for student ${studentId}, cluster=${cluster}, subject=${subject}, chapter=${chapter}`,
         );
 
-        const cachedBlockRes = await this.pool.query(
-            `SELECT * FROM teaching_blocks WHERE grade = $1 AND subject = $2 AND chapter = $3 AND capability_cluster = $4 LIMIT 1`,
-            [student.grade, subject, chapter, cluster]
-        );
-        const cachedBlock = cachedBlockRes.rows[0];
+        const { data: cachedBlock, error: cacheError } = await this.supabase
+            .from('teaching_blocks')
+            .select('*')
+            .eq('grade', student.grade)
+            .eq('subject', subject)
+            .eq('chapter', chapter)
+            .eq('capability_cluster', cluster)
+            .limit(1)
+            .single();
 
-        if (cachedBlock) {
+        if (cachedBlock && !cacheError) {
             this.logger.log(`Cache HIT for teaching block (id=${cachedBlock.id}), returning immediately`);
-            const parsed = JSON.parse(cachedBlock.content) as TeachingResponse;
+            const parsed = typeof cachedBlock.content === 'string'
+                ? JSON.parse(cachedBlock.content)
+                : cachedBlock.content as TeachingResponse;
             return {
-                block: cachedBlock,
+                block: cachedBlock as TeachingBlock,
                 content: parsed,
                 fromCache: true,
             };
@@ -99,16 +105,26 @@ export class TeachingService {
         );
 
         // 5. Save new teaching block to DB
-        const newBlockRes = await this.pool.query(
-            `INSERT INTO teaching_blocks (grade, subject, chapter, capability_cluster, content)
-             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [student.grade, subject, chapter, cluster, JSON.stringify(aiResponse)]
-        );
-        const savedBlock = newBlockRes.rows[0];
+        const { data: savedBlock, error: saveError } = await this.supabase
+            .from('teaching_blocks')
+            .insert({
+                grade: student.grade,
+                subject,
+                chapter,
+                capability_cluster: cluster,
+                content: JSON.stringify(aiResponse)
+            })
+            .select()
+            .single();
+
+        if (saveError) {
+            this.logger.error(`Error saving teaching block: ${saveError.message}`);
+            throw new Error('Failed to save teaching session');
+        }
 
         this.logger.log(`Saved new teaching block (id=${savedBlock.id})`);
         return {
-            block: savedBlock,
+            block: savedBlock as TeachingBlock,
             content: aiResponse,
             fromCache: false,
         };

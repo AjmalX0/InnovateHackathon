@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException, Logger, Inject } from '@nestjs/common';
-import { Pool } from 'pg';
+import { Injectable, NotFoundException, Logger, Inject, InternalServerErrorException } from '@nestjs/common';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { StudentProfile } from './entities/student-profile.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
 
@@ -8,37 +8,47 @@ export class StudentsService {
     private readonly logger = new Logger(StudentsService.name);
 
     constructor(
-        @Inject('DATABASE_POOL') private readonly pool: Pool,
+        @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
     ) { }
 
     async createProfile(dto: CreateStudentDto): Promise<StudentProfile> {
-        const query = `
-            INSERT INTO student_profiles (name, grade, capability_score)
-            VALUES ($1, $2, $3)
-            RETURNING *;
-        `;
-        const result = await this.pool.query(query, [dto.name, dto.grade, 50]);
-        const saved = result.rows[0];
-        this.logger.log(`Created student profile: ${saved.id} (${saved.name})`);
-        return saved;
+        const { data, error } = await this.supabase
+            .from('student_profiles')
+            .insert({ name: dto.name, grade: dto.grade, capability_score: 50 })
+            .select()
+            .single();
+
+        if (error) {
+            this.logger.error(`Error creating profile: ${error.message}`);
+            throw new InternalServerErrorException('Failed to create student profile');
+        }
+
+        this.logger.log(`Created student profile: ${data.id} (${data.name})`);
+        return data as StudentProfile;
     }
 
     async getProfile(id: string): Promise<StudentProfile> {
-        const query = `SELECT * FROM student_profiles WHERE id = $1`;
-        const result = await this.pool.query(query, [id]);
-        const student = result.rows[0];
-        if (!student) {
+        const { data, error } = await this.supabase
+            .from('student_profiles')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error || !data) {
             throw new NotFoundException(`Student profile with id ${id} not found`);
         }
-        return student;
+        return data as StudentProfile;
     }
 
     async updateCapabilityScore(id: string, score: number): Promise<void> {
-        const query = `
-            UPDATE student_profiles
-            SET capability_score = $1, last_active = NOW()
-            WHERE id = $2
-        `;
-        await this.pool.query(query, [Math.min(100, Math.max(0, score)), id]);
+        const newScore = Math.min(100, Math.max(0, score));
+        const { error } = await this.supabase
+            .from('student_profiles')
+            .update({ capability_score: newScore, last_active: new Date().toISOString() })
+            .eq('id', id);
+
+        if (error) {
+            this.logger.error(`Error updating capability score: ${error.message}`);
+        }
     }
 }

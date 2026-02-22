@@ -84,3 +84,44 @@ CREATE TABLE IF NOT EXISTS syllabus_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_syllabus_chunks_lookup
     ON syllabus_chunks (grade, subject, chapter, chunk_order);
+
+-- ============================================
+-- Vector Embeddings for Syllabus Chunks (RAG)
+-- ============================================
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE syllabus_chunks ADD COLUMN IF NOT EXISTS embedding vector(768);
+
+-- Create Supabase RPC Stored Procedure for Pure Supabase JS RAG Search
+CREATE OR REPLACE FUNCTION match_syllabus_chunks (
+  query_embedding vector(768),
+  match_grade int,
+  match_subject text,
+  match_limit int DEFAULT 3
+) RETURNS TABLE (
+  id uuid,
+  grade int,
+  subject varchar,
+  chapter varchar,
+  content text,
+  chunk_order int,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    sc.id,
+    sc.grade,
+    sc.subject,
+    sc.chapter,
+    sc.content,
+    sc.chunk_order,
+    1 - (sc.embedding <=> query_embedding) AS similarity
+  FROM syllabus_chunks sc
+  WHERE sc.grade <= match_grade AND sc.subject = match_subject
+  ORDER BY sc.embedding <=> query_embedding
+  LIMIT match_limit;
+END;
+$$;
