@@ -1,5 +1,6 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { StudentProfile } from '../students/entities/student-profile.entity';
 import { SyllabusChunk } from '../syllabus/entities/syllabus-chunk.entity';
 import { CapabilityCluster } from '../../common/enums/capability-cluster.enum';
@@ -20,19 +21,32 @@ export interface DoubtResponse {
 @Injectable()
 export class AiService {
     private readonly logger = new Logger(AiService.name);
+
+    /** OpenRouter client — used for all text generation */
+    private readonly client: OpenAI;
+
+    /** Google SDK — kept only for 768-dim embeddings (pgvector) and audio inlineData */
     private readonly genAI: GoogleGenerativeAI;
-    private readonly model: GenerativeModel;
     private readonly embedModel: GenerativeModel;
 
+    private readonly GENERATION_MODEL = 'google/gemini-2.5-flash';
+
     constructor() {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-            throw new Error('GEMINI_API_KEY environment variable is required');
+        const openRouterKey = process.env.OPENROUTER_API_KEY;
+        if (!openRouterKey) {
+            throw new Error('OPENROUTER_API_KEY environment variable is required');
         }
-        const genAI = new GoogleGenerativeAI(apiKey);
-        this.genAI = genAI;
-        this.model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        this.embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+        this.client = new OpenAI({
+            baseURL: 'https://openrouter.ai/api/v1',
+            apiKey: openRouterKey,
+        });
+
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (!geminiKey) {
+            throw new Error('GEMINI_API_KEY environment variable is required (used for embeddings and audio)');
+        }
+        this.genAI = new GoogleGenerativeAI(geminiKey);
+        this.embedModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
     }
 
     async transcribeAudio(audioBuffer: Buffer, language: 'ml' | 'en' = 'ml'): Promise<string> {
@@ -41,7 +55,9 @@ export class AiService {
             : 'The audio is in English. Transcribe it exactly as spoken.';
 
         try {
-            const result = await this.model.generateContent([
+            // Audio inlineData requires Google's native SDK (not supported via OpenRouter)
+            const audioModel = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const result = await audioModel.generateContent([
                 {
                     inlineData: {
                         mimeType: 'audio/wav',
@@ -146,9 +162,15 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.
 `.trim();
 
         try {
-            const result = await this.model.generateContent(prompt);
-            const text = result.response.text().trim();
-            const parsed = JSON.parse(text) as TeachingResponse;
+            const response = await this.client.chat.completions.create({
+                model: this.GENERATION_MODEL,
+                messages: [{ role: 'user', content: prompt }],
+            });
+            const text = (response.choices[0].message.content ?? '').trim();
+            const jsonStr = text.startsWith('```json')
+                ? text.replace(/^```json\n/, '').replace(/\n```$/, '')
+                : text;
+            const parsed = JSON.parse(jsonStr) as TeachingResponse;
             this.logger.log(`Generated teaching block for student ${student.id}`);
             return parsed;
         } catch (error) {
@@ -199,9 +221,15 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.
 `.trim();
 
         try {
-            const result = await this.model.generateContent(prompt);
-            const text = result.response.text().trim();
-            const parsed = JSON.parse(text) as DoubtResponse;
+            const response = await this.client.chat.completions.create({
+                model: this.GENERATION_MODEL,
+                messages: [{ role: 'user', content: prompt }],
+            });
+            const text = (response.choices[0].message.content ?? '').trim();
+            const jsonStr = text.startsWith('```json')
+                ? text.replace(/^```json\n/, '').replace(/\n```$/, '')
+                : text;
+            const parsed = JSON.parse(jsonStr) as DoubtResponse;
             this.logger.log(`Generated doubt answer for student ${student.id}`);
             return parsed;
         } catch (error) {
@@ -247,11 +275,13 @@ Return ONLY the JSON object, no markdown formatting blocks containing the JSON.
 `.trim();
 
         try {
-            const result = await this.model.generateContent(prompt);
-            const text = result.response.text().trim();
-            // Handle cases where the model wraps JSON in markdown blocks despite our instructions
-            const jsonStr = text.startsWith('\`\`\`json')
-                ? text.replace(/^\`\`\`json\n/, '').replace(/\n\`\`\`$/, '')
+            const response = await this.client.chat.completions.create({
+                model: this.GENERATION_MODEL,
+                messages: [{ role: 'user', content: prompt }],
+            });
+            const text = (response.choices[0].message.content ?? '').trim();
+            const jsonStr = text.startsWith('```json')
+                ? text.replace(/^```json\n/, '').replace(/\n```$/, '')
                 : text;
 
             const parsed = JSON.parse(jsonStr) as { topic: string; content: string };
@@ -300,11 +330,13 @@ Return ONLY the JSON array, no markdown formatting blocks containing the JSON.
 `.trim();
 
         try {
-            const result = await this.model.generateContent(prompt);
-            const text = result.response.text().trim();
-
-            const jsonStr = text.startsWith('\`\`\`json')
-                ? text.replace(/^\`\`\`json\n/, '').replace(/\n\`\`\`$/, '')
+            const response = await this.client.chat.completions.create({
+                model: this.GENERATION_MODEL,
+                messages: [{ role: 'user', content: prompt }],
+            });
+            const text = (response.choices[0].message.content ?? '').trim();
+            const jsonStr = text.startsWith('```json')
+                ? text.replace(/^```json\n/, '').replace(/\n```$/, '')
                 : text;
 
             const parsed = JSON.parse(jsonStr) as any[];
