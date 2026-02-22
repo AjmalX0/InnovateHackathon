@@ -64,8 +64,11 @@ class SimplifyPayload {
     cors: {
         origin: '*',
         methods: ['GET', 'POST'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+        credentials: false,
     },
     namespace: '/',
+    transports: ['websocket', 'polling'],
 })
 export class VidyabotGateway
     implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -85,10 +88,22 @@ export class VidyabotGateway
     }
 
     handleConnection(client: Socket): void {
+        console.log('🟢 ════════════════════════════════════════════');
+        console.log('🟢  SOCKET CONNECTED');
+        console.log(`🟢  clientId   : ${client.id}`);
+        console.log(`🟢  transport  : ${client.conn.transport.name}`);
+        console.log(`🟢  remoteAddr : ${client.handshake.address}`);
+        console.log(`🟢  time       : ${new Date().toISOString()}`);
+        console.log('🟢 ════════════════════════════════════════════');
         this.logger.log(`Client connected: ${client.id}`);
     }
 
     handleDisconnect(client: Socket): void {
+        console.log('🔴 ════════════════════════════════════════════');
+        console.log('🔴  SOCKET DISCONNECTED');
+        console.log(`🔴  clientId   : ${client.id}`);
+        console.log(`🔴  time       : ${new Date().toISOString()}`);
+        console.log('🔴 ════════════════════════════════════════════');
         this.logger.log(`Client disconnected: ${client.id}`);
     }
 
@@ -153,6 +168,17 @@ export class VidyabotGateway
         }
 
         try {
+            // ── Voice input detection ──────────────────────────────────────
+            if (payload.inputType === 'voice') {
+                console.log('🎤 ════════════════════════════════════════════');
+                console.log('🎤  VOICE INPUT RECEIVED');
+                console.log(`🎤  studentId   : ${payload.studentId}`);
+                console.log(`🎤  subject     : ${payload.subject}`);
+                console.log(`🎤  chapter     : ${payload.chapter}`);
+                console.log(`🎤  audioBase64 : ${payload.audioBase64 ? `${payload.audioBase64.length} chars` : 'MISSING ⚠️'}`);
+                console.log('🎤 ════════════════════════════════════════════');
+            }
+
             this.logger.log(
                 `[ask_doubt] studentId=${payload.studentId}, chapter=${payload.chapter}, inputType=${payload.inputType}`,
             );
@@ -211,17 +237,37 @@ export class VidyabotGateway
         try {
             // 1. Record the simplify click — decreases the student's score by SIMPLIFY_PENALTY
             this.capabilityService.recordSimplify(payload.studentId);
-            const penalty = this.capabilityService.getSimplifyPenalty(payload.studentId);
+            const penalty      = this.capabilityService.getSimplifyPenalty(payload.studentId);
+            const clickCount   = penalty / 10; // each click = 10 points
+
+            console.log('🔽 ════════════════════════════════════════════');
+            console.log('🔽  SIMPLIFY REQUESTED');
+            console.log(`🔽  studentId    : ${payload.studentId}`);
+            console.log(`🔽  subject      : ${payload.subject}`);
+            console.log(`🔽  chapter      : ${payload.chapter}`);
+            console.log(`🔽  clickCount   : ${clickCount}`);
+            console.log(`🔽  totalPenalty : -${penalty} points`);
+            console.log('🔽 ════════════════════════════════════════════');
+
             this.logger.log(
-                `[simplify_requested] studentId=${payload.studentId} totalPenalty=${penalty}`,
+                `[simplify_requested] studentId=${payload.studentId} clickCount=${clickCount} totalPenalty=${penalty}`,
             );
 
-            // 2. Re-run teaching session with the updated (lower) capability score
+            // 2. Force fresh generation — skip cache so each simplify gives a NEW simpler version
             const result = await this.teachingService.startTeachingSession(
                 payload.studentId,
                 payload.subject,
                 payload.chapter,
+                [],
+                true, // forceRegenerate = true
             );
+
+            console.log('🔽 ════════════════════════════════════════════');
+            console.log('🔽  SIMPLIFY DONE');
+            console.log(`🔽  blockId      : ${result.block.id}`);
+            console.log(`🔽  fromCache    : ${result.fromCache}`);
+            console.log(`🔽  cluster      : ${result.block.capability_cluster}`);
+            console.log('🔽 ════════════════════════════════════════════');
 
             // 3. Return simplified lesson to client
             client.emit('lesson_started', {
@@ -229,7 +275,9 @@ export class VidyabotGateway
                 fromCache: result.fromCache,
                 content: result.content,
                 simplified: true,
+                clickCount,
                 simplifyPenaltyApplied: penalty,
+                currentCluster: result.block.capability_cluster,
             });
         } catch (error) {
             const err = error as Error;

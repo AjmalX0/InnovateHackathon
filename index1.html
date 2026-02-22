@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VidyaBot — Admin Panel</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --muted: #8b949e;
+      --blue: #1f6feb;
+      --blue-hover: #388bfd;
+      --green: #238636;
+      --green-hover: #2ea043;
+      --red: #da3633;
+      --orange: #bd561d;
+      --purple: #bc8cff;
+      --yellow: #d29922;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Top Bar ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-brand { display: flex; align-items: center; gap: 10px; }
+    .topbar-brand span { font-size: 20px; font-weight: 700; color: #58a6ff; }
+    .topbar-badge {
+      background: var(--green);
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+    .server-row { display: flex; align-items: center; gap: 8px; }
+    .server-row input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      width: 260px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+    .dot.ok { background: #3fb950; }
+
+    /* ── Layout ── */
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 53px); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 16px 0;
+    }
+    .sidebar-section { padding: 8px 16px 4px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .sidebar-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 20px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .sidebar-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .sidebar-item.active { background: rgba(31,111,235,0.15); color: #58a6ff; border-right: 2px solid #58a6ff; }
+    .sidebar-item .icon { font-size: 16px; width: 20px; text-align: center; }
+
+    /* ── Main ── */
+    .main { padding: 28px; overflow-y: auto; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Page Header ── */
+    .page-header { margin-bottom: 24px; }
+    .page-header h2 { font-size: 22px; color: #58a6ff; margin-bottom: 4px; }
+    .page-header p { font-size: 13px; color: var(--muted); }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 13px;
+      color: var(--purple);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── Form elements ── */
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+    .form-row.full { grid-template-columns: 1fr; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group input,
+    .form-group select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+    .form-group select option { background: var(--surface); }
+
+    /* ── Upload drop zone ── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--blue);
+      background: rgba(31,111,235,0.05);
+    }
+    .drop-zone .drop-icon { font-size: 36px; margin-bottom: 10px; }
+    .drop-zone .drop-text { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+    .drop-zone .drop-sub  { font-size: 12px; color: var(--muted); }
+    .drop-zone.has-file { border-color: var(--green); background: rgba(35,134,54,0.05); }
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: rgba(35,134,54,0.1);
+      border: 1px solid var(--green);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .file-info.show { display: flex; }
+
+    /* ── Progress bar ── */
+    .progress-wrap {
+      display: none;
+      margin-bottom: 12px;
+    }
+    .progress-wrap.show { display: block; }
+    .progress-bar-bg {
+      background: var(--border);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue), var(--purple));
+      border-radius: 4px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+    .progress-label { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary  { background: var(--blue);   color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--blue-hover); }
+    .btn-success  { background: var(--green);  color: #fff; }
+    .btn-success:hover:not(:disabled) { background: var(--green-hover); }
+    .btn-danger   { background: var(--red);    color: #fff; }
+    .btn-ghost    { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-row { display: flex; gap: 10px; margin-top: 4px; }
+
+    /* ── Toast ── */
+    #toast-container {
+      position: fixed; bottom: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 8px;
+      z-index: 9999;
+    }
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 280px;
+      animation: slideIn 0.2s ease;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    .toast.success { border-left: 3px solid #3fb950; }
+    .toast.error   { border-left: 3px solid var(--red); }
+    .toast.info    { border-left: 3px solid var(--blue); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(48,54,61,0.5);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* ── Badge ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-blue   { background: rgba(31,111,235,0.2); color: #58a6ff; }
+    .badge-green  { background: rgba(35,134,54,0.2);  color: #3fb950; }
+    .badge-orange { background: rgba(189,86,29,0.2);  color: #f0883e; }
+    .badge-purple { background: rgba(188,140,255,0.2);color: var(--purple); }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+    }
+    .empty .empty-icon { font-size: 36px; margin-bottom: 10px; }
+    .empty p { font-size: 13px; }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Stats row ── */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+    .stat-card .stat-val { font-size: 28px; font-weight: 700; color: #58a6ff; }
+    .stat-card .stat-lbl { font-size: 11px; color: var(--muted); margin-top: 4px; text-transform: uppercase; }
+
+    /* ── Grade pills ── */
+    .grade-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .grade-pill {
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      color: var(--muted);
+    }
+    .grade-pill:hover { border-color: var(--blue); color: #58a6ff; }
+    .grade-pill.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  </style>
+</head>
+<body>
+
+<!-- ── Top Bar ── -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <span>🤖 VidyaBot</span>
+    <span class="topbar-badge">Admin</span>
+  </div>
+  <div class="server-row">
+    <span style="font-size:12px;color:var(--muted);">Server:</span>
+    <input id="baseUrl" value="http://localhost:3000" placeholder="http://localhost:3000" />
+    <span class="dot" id="serverDot"></span>
+    <span id="serverStatus" style="font-size:12px;color:var(--muted);">Not checked</span>
+    <button class="btn btn-ghost btn-sm" onclick="pingServer()">Ping</button>
+  </div>
+</div>
+
+<!-- ── Layout ── -->
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <nav class="sidebar">
+    <div class="sidebar-section">Overview</div>
+    <div class="sidebar-item active" onclick="showPage('dashboard')" id="nav-dashboard">
+      <span class="icon">📊</span> Dashboard
+    </div>
+
+    <div class="sidebar-section" style="margin-top:8px">Catalog</div>
+    <div class="sidebar-item" onclick="showPage('subjects')" id="nav-subjects">
+      <span class="icon">📚</span> Subjects
+    </div>
+    <div class="sidebar-item" onclick="showPage('chapters')" id="nav-chapters">
+      <span class="icon">📖</span> Chapters
+    </div>
+
+    <div class="sidebar-section" style="margin-top:8px">Content</div>
+    <div class="sidebar-item" onclick="showPage('upload')" id="nav-upload">
+      <span class="icon">⬆️</span> Upload PDF
+    </div>
+    <div class="sidebar-item" onclick="showPage('chunks')" id="nav-chunks">
+      <span class="icon">🔍</span> View Chunks
+    </div>
+    <div class="sidebar-section" style="margin-top:8px">Tools</div>
+    <div class="sidebar-item" onclick="showPage('search')" id="nav-search">
+      <span class="icon">🔎</span> RAG Search
+    </div>
+    <div class="sidebar-item" onclick="showPage('seed')" id="nav-seed">
+      <span class="icon">🌱</span> Seed Demo Data
+    </div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <main class="main">
+
+    <!-- ── Dashboard ── -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h2>📊 Dashboard</h2>
+        <p>Overview of all subjects, chapters, and uploaded content.</p>
+      </div>
+
+      <div class="stats" id="stats-row">
+        <div class="stat-card"><div class="stat-val" id="stat-subjects">—</div><div class="stat-lbl">Subjects</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-chapters">—</div><div class="stat-lbl">Chapters</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-chunks">—</div><div class="stat-lbl">Chunks</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-grades">—</div><div class="stat-lbl">Grades</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Quick Browse — Select Grade</div>
+        <div class="grade-pills" id="dash-grade-pills"></div>
+        <div id="dash-subjects-wrap">
+          <div class="empty"><div class="empty-icon">👆</div><p>Select a grade above</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Subjects ── -->
+    <div class="page" id="page-subjects">
+      <div class="page-header">
+        <h2>📚 Subjects</h2>
+        <p>Register subjects per grade. Students browse these before choosing a chapter.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">➕ Add New Subject</div>
+        <div class="form-row three">
+          <div class="form-group">
+            <label>Grade</label>
+            <select id="sub-grade">
+              <option value="">— Select grade —</option>
+              <option>8</option><option>9</option><option>10</option>
+              <option>11</option><option>12</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subject Slug</label>
+            <input id="sub-slug" placeholder="e.g. science" />
+          </div>
+          <div class="form-group">
+            <label>Display Name</label>
+            <input id="sub-display" placeholder="e.g. Science" />
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-success" onclick="addSubject()">➕ Add Subject</button>
+          <button class="btn btn-ghost" onclick="loadSubjects()">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Registered Subjects — Filter by Grade</div>
+        <div class="grade-pills" id="sub-grade-pills"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Grade</th>
+                <th>Subject Slug</th>
+                <th>Display Name</th>
+                <th>ID</th>
+              </tr>
+            </thead>
+            <tbody id="subjects-tbody">
+              <tr><td colspan="4"><div class="empty"><p>Select a grade to load subjects</p></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Chapters ── -->
+    <div class="page" id="page-chapters">
+      <div class="page-header">
+        <h2>📖 Chapters</h2>
+        <p>Register chapters under each subject. Use the order field to control sequence.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">➕ Add New Chapter</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Grade</label>
+            <select id="ch-grade" onchange="loadSubjectsForChapter()">
+              <option value="">— Select grade —</option>
+              <option>8</option><option>9</option><option>10</option>
+              <option>11</option><option>12</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <select id="ch-subject">
+              <option value="">— Select grade first —</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row three">
+          <div class="form-group">
+            <label>Chapter Slug</label>
+            <input id="ch-slug" placeholder="e.g. chapter-1-life-processes" />
+          </div>
+          <div class="form-group">
+            <label>Display Name</label>
+            <input id="ch-display" placeholder="e.g. Life Processes" />
+          </div>
+          <div class="form-group">
+            <label>Order</label>
+            <input id="ch-order" type="number" value="1" min="0" />
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-success" onclick="addChapter()">➕ Add Chapter</button>
+          <button class="btn btn-ghost" onclick="loadChapters()">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Registered Chapters — Filter</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Grade</label>
+            <select id="ch-filter-grade" onchange="loadChapterSubjects()">
+              <option value="">— All grades —</option>
+              <option>8</option><option>9</option><option>10</option>
+              <option>11</option><option>12</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <select id="ch-filter-subject" onchange="loadChapters()">
+              <option value="">— All subjects —</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Grade</th>
+                <th>Subject</th>
+                <th>Chapter Slug</th>
+                <th>Display Name</th>
+              </tr>
+            </thead>
+            <tbody id="chapters-tbody">
+              <tr><td colspan="5"><div class="empty"><p>Apply a filter above to see chapters</p></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Upload PDF ── -->
+    <div class="page" id="page-upload">
+      <div class="page-header">
+        <h2>⬆️ Upload Textbook PDF</h2>
+        <p>Upload a PDF chapter → it will be parsed, chunked, embedded via Gemini, and stored in pgvector for RAG.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📄 PDF Details</div>
+        <div class="form-row three">
+          <div class="form-group">
+            <label>Grade</label>
+            <select id="up-grade" onchange="loadSubjectsForUpload()">
+              <option value="">— Select grade —</option>
+              <option>8</option><option>9</option><option>10</option>
+              <option>11</option><option>12</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <select id="up-subject" onchange="loadChaptersForUpload()">
+              <option value="">— Select grade first —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Chapter</label>
+            <select id="up-chapter">
+              <option value="">— Select subject first —</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <!-- Drop zone -->
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('pdf-input').click()">
+          <input type="file" id="pdf-input" accept=".pdf" style="display:none" onchange="handleFileSelect(this)" />
+          <div class="drop-icon">📄</div>
+          <div class="drop-text">Click to select PDF or drag & drop here</div>
+          <div class="drop-sub">PDF files only · Max 50 MB</div>
+        </div>
+
+        <!-- File info -->
+        <div class="file-info" id="file-info">
+          <span style="font-size:20px">📄</span>
+          <div>
+            <div id="file-name" style="font-weight:600;color:var(--text)"></div>
+            <div id="file-size" style="font-size:11px;color:var(--muted)"></div>
+          </div>
+          <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="clearFile()">✕</button>
+        </div>
+
+        <!-- Progress -->
+        <div class="progress-wrap" id="up-progress">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="up-bar"></div>
+          </div>
+          <div class="progress-label" id="up-label">Uploading...</div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-upload" onclick="uploadPDF()">
+            ⬆️ Upload & Process PDF
+          </button>
+          <button class="btn btn-ghost" onclick="clearFile()">✕ Clear</button>
+        </div>
+      </div>
+
+      <!-- Upload history -->
+      <div class="card">
+        <div class="card-title">📜 Upload Log (this session)</div>
+        <div id="upload-log">
+          <div class="empty"><div class="empty-icon">📋</div><p>No uploads yet</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── View Chunks ── -->
+    <div class="page" id="page-chunks">
+      <div class="page-header">
+        <h2>🔍 View Chunks</h2>
+        <p>Verify that PDF ingestion worked correctly by browsing stored text chunks.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔎 Filter Chunks</div>
+        <div class="form-row three">
+          <div class="form-group">
+            <label>Grade</label>
+            <select id="ck-grade" onchange="loadSubjectsForChunks()">
+              <option value="">— Select —</option>
+              <option>8</option><option>9</option><option>10</option>
+              <option>11</option><option>12</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <select id="ck-subject" onchange="loadChaptersForChunks()">
+              <option value="">— Grade first —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Chapter</label>
+            <select id="ck-chapter">
+              <option value="">— Subject first —</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="loadChunks()">🔍 Load Chunks</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="chunks-title">📦 Chunks</div>
+        <div id="chunks-list">
+          <div class="empty"><div class="empty-icon">📦</div><p>Apply a filter above to see chunks</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RAG Search ── -->
+    <div class="page" id="page-search">
+      <div class="page-header">
+        <h2>🔎 RAG Semantic Search</h2>
+        <p>Test vector similarity search to debug RAG retrieval quality.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🧠 Search Parameters</div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Search Query</label>
+            <input id="rag-query" placeholder="e.g. What is photosynthesis?" />
+          </div>
+        </div>
+        <div class="form-row three">
+          <div class="form-group">
+            <label>Grade</label>
+            <select id="rag-grade">
+              <option value="">— Select —</option>
+              <option>8</option><option>9</option><option>10</option>
+              <option>11</option><option>12</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <input id="rag-subject" placeholder="e.g. science" />
+          </div>
+          <div class="form-group">
+            <label>Limit</label>
+            <input id="rag-limit" type="number" value="3" min="1" max="10" />
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="ragSearch()">🔎 Search</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📄 Search Results</div>
+        <div id="rag-results">
+          <div class="empty"><div class="empty-icon">🔍</div><p>Results will appear here</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Seed Demo Data ── -->
+    <div class="page" id="page-seed">
+      <div class="page-header">
+        <h2>🌱 Seed Demo Data</h2>
+        <p>Populate the database with pre-written demo subjects, chapters, and text chunks for testing.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 What Gets Seeded</div>
+        <table>
+          <thead>
+            <tr><th>Grade</th><th>Subject</th><th>Chapters</th><th>Chunks each</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="badge badge-blue">10</span></td><td>science</td><td>chapter-1-life-processes, chapter-2-control-coordination</td><td>4</td></tr>
+            <tr><td><span class="badge badge-blue">10</span></td><td>mathematics</td><td>chapter-1-real-numbers, chapter-3-pair-of-linear-equations</td><td>4</td></tr>
+            <tr><td><span class="badge badge-orange">9</span></td><td>science</td><td>chapter-1-matter-in-surroundings, chapter-2-is-matter-around-us-pure</td><td>4</td></tr>
+          </tbody>
+        </table>
+        <hr class="divider" />
+        <div class="btn-row">
+          <button class="btn btn-success" onclick="seedDemo()">🌱 Seed Demo Data</button>
+          <button class="btn btn-danger"  onclick="clearSeed()">🗑️ Clear Demo Data</button>
+        </div>
+        <div id="seed-result" style="margin-top:16px"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Toast container ── -->
+<div id="toast-container"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let selectedFile = null;
+const uploadLog  = [];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function base() { return document.getElementById('baseUrl').value.trim().replace(/\/$/, ''); }
+
+async function api(method, path, body = null, isForm = false) {
+  const opts = { method, headers: {} };
+  if (body && !isForm) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
+  if (body && isForm)  { opts.body = body; }
+  const res = await fetch(base() + path, opts);
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
+function toast(msg, type = 'info') {
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  document.getElementById(`page-${name}`).classList.add('active');
+  document.getElementById(`nav-${name}`).classList.add('active');
+
+  // Trigger loads on first visit
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'subjects')  { loadGradePills('sub-grade-pills', filterSubjectsByGrade); }
+  if (name === 'upload')    loadDashboard();
+}
+
+// ── Ping server ───────────────────────────────────────────────────────────────
+
+async function pingServer() {
+  document.getElementById('serverStatus').textContent = 'Checking...';
+  try {
+    const res = await fetch(base() + '/syllabus/subjects?grade=10');
+    const ok  = res.ok || res.status === 400;
+    document.getElementById('serverDot').className    = 'dot' + (ok ? ' ok' : '');
+    document.getElementById('serverStatus').textContent = ok ? 'Online ✓' : 'Error';
+    if (ok) toast('Server is online', 'success');
+    else    toast('Server error — check if backend is running', 'error');
+  } catch {
+    document.getElementById('serverDot').className    = 'dot';
+    document.getElementById('serverStatus').textContent = 'Offline ✗';
+    toast('Cannot reach server', 'error');
+  }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+async function loadDashboard() {
+  const grades = [8, 9, 10, 11, 12];
+  let totalSubjects = 0, totalChapters = 0, gradeCount = 0;
+
+  for (const g of grades) {
+    const r = await api('GET', `/syllabus/subjects?grade=${g}`);
+    if (r.ok && r.data.subjects && r.data.subjects.length > 0) {
+      gradeCount++;
+      totalSubjects += r.data.subjects.length;
+      for (const s of r.data.subjects) {
+        const c = await api('GET', `/syllabus/chapters?grade=${g}&subject=${s}`);
+        if (c.ok) totalChapters += (c.data.chapters || []).length;
+      }
+    }
+  }
+
+  document.getElementById('stat-subjects').textContent = totalSubjects;
+  document.getElementById('stat-chapters').textContent = totalChapters;
+  document.getElementById('stat-grades').textContent   = gradeCount;
+  document.getElementById('stat-chunks').textContent   = '—';
+
+  // Grade pills
+  const pills = document.getElementById('dash-grade-pills');
+  pills.innerHTML = grades.map(g =>
+    `<span class="grade-pill" onclick="loadDashSubjects(${g},this)">${g}</span>`
+  ).join('');
+}
+
+async function loadDashSubjects(grade, el) {
+  document.querySelectorAll('#dash-grade-pills .grade-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+
+  const wrap = document.getElementById('dash-subjects-wrap');
+  wrap.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+
+  const r = await api('GET', `/syllabus/subjects?grade=${grade}`);
+  if (!r.ok || !r.data.subjects || r.data.subjects.length === 0) {
+    wrap.innerHTML = `<div class="empty"><p>No subjects found for Grade ${grade}</p></div>`;
+    return;
+  }
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">';
+  for (const s of r.data.subjects) {
+    const ch = await api('GET', `/syllabus/chapters?grade=${grade}&subject=${s}`);
+    const chapters = ch.ok ? (ch.data.chapters || []) : [];
+    html += `
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px">
+        <div style="font-weight:700;color:#58a6ff;margin-bottom:8px">📚 ${s}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${chapters.length} chapter(s)</div>
+        ${chapters.map(c => `<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text)">📖 ${c}</div>`).join('')}
+      </div>`;
+  }
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+// ── Subjects ──────────────────────────────────────────────────────────────────
+
+function loadGradePills(containerId, callback) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = [8, 9, 10, 11, 12].map(g =>
+    `<span class="grade-pill" onclick="(${callback.toString()})(${g},this)">${g}</span>`
+  ).join('');
+}
+
+async function filterSubjectsByGrade(grade, el) {
+  document.querySelectorAll('#sub-grade-pills .grade-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  await loadSubjects(grade);
+}
+
+async function loadSubjects(grade) {
+  if (!grade) { grade = document.querySelector('#sub-grade-pills .grade-pill.active')?.textContent; }
+  if (!grade) return;
+
+  const tbody = document.getElementById('subjects-tbody');
+  tbody.innerHTML = '<tr><td colspan="4"><div class="empty"><div class="spinner"></div></div></td></tr>';
+
+  const r = await api('GET', `/syllabus/catalog/subjects?grade=${grade}`);
+  if (!r.ok) { toast('Failed to load subjects', 'error'); return; }
+
+  const items = r.data.subjects || [];
+  if (items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4"><div class="empty"><p>No subjects for Grade ${grade}</p></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(s => `
+    <tr>
+      <td><span class="badge badge-blue">Grade ${s.grade ?? grade}</span></td>
+      <td style="font-weight:600">${s.subject}</td>
+      <td>${s.displayName}</td>
+      <td style="font-size:11px;color:var(--muted)">${s.id}</td>
+    </tr>`).join('');
+}
+
+async function addSubject() {
+  const grade       = document.getElementById('sub-grade').value;
+  const subject     = document.getElementById('sub-slug').value.trim();
+  const displayName = document.getElementById('sub-display').value.trim();
+
+  if (!grade || !subject || !displayName) { toast('All fields are required', 'error'); return; }
+
+  const r = await api('POST', '/syllabus/catalog/subjects', { grade: parseInt(grade), subject, displayName });
+
+  if (r.ok) {
+    toast(`Subject "${displayName}" added ✓`, 'success');
+    document.getElementById('sub-slug').value    = '';
+    document.getElementById('sub-display').value = '';
+    loadSubjects(grade);
+  } else {
+    toast(r.data?.message || 'Failed to add subject', 'error');
+  }
+}
+
+// ── Chapters ──────────────────────────────────────────────────────────────────
+
+async function loadSubjectsForChapter() {
+  const grade = document.getElementById('ch-grade').value;
+  const sel   = document.getElementById('ch-subject');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  if (!grade) return;
+
+  const r = await api('GET', `/syllabus/catalog/subjects?grade=${grade}`);
+  const items = r.ok ? (r.data.subjects || []) : [];
+  sel.innerHTML = items.length
+    ? `<option value="">— Select subject —</option>` + items.map(s => `<option value="${s.subject}">${s.displayName}</option>`).join('')
+    : `<option value="">No subjects for Grade ${grade}</option>`;
+}
+
+async function loadChapterSubjects() {
+  const grade = document.getElementById('ch-filter-grade').value;
+  const sel   = document.getElementById('ch-filter-subject');
+  sel.innerHTML = '<option value="">— All subjects —</option>';
+  if (!grade) return;
+
+  const r = await api('GET', `/syllabus/catalog/subjects?grade=${grade}`);
+  const items = r.ok ? (r.data.subjects || []) : [];
+  sel.innerHTML = `<option value="">— All subjects —</option>` + items.map(s => `<option value="${s.subject}">${s.displayName}</option>`).join('');
+}
+
+async function loadChapters() {
+  const grade   = document.getElementById('ch-filter-grade').value;
+  const subject = document.getElementById('ch-filter-subject').value;
+  const tbody   = document.getElementById('chapters-tbody');
+
+  if (!grade || !subject) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><p>Select grade and subject to see chapters</p></div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="spinner"></div></div></td></tr>';
+
+  const r = await api('GET', `/syllabus/catalog/chapters?grade=${grade}&subject=${subject}`);
+  const items = r.ok ? (r.data.chapters || []) : [];
+
+  if (items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><p>No chapters for Grade ${grade} ${subject}</p></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(c => `
+    <tr>
+      <td><span class="badge badge-purple">${c.order}</span></td>
+      <td><span class="badge badge-blue">Grade ${grade}</span></td>
+      <td>${subject}</td>
+      <td style="font-size:12px;color:var(--muted)">${c.chapter}</td>
+      <td style="font-weight:600">${c.displayName}</td>
+    </tr>`).join('');
+}
+
+async function addChapter() {
+  const grade       = document.getElementById('ch-grade').value;
+  const subject     = document.getElementById('ch-subject').value;
+  const chapter     = document.getElementById('ch-slug').value.trim();
+  const displayName = document.getElementById('ch-display').value.trim();
+  const order       = parseInt(document.getElementById('ch-order').value) || 0;
+
+  if (!grade || !subject || !chapter || !displayName) { toast('All fields are required', 'error'); return; }
+
+  const r = await api('POST', '/syllabus/catalog/chapters', {
+    grade: parseInt(grade), subject, chapter, displayName, order
+  });
+
+  if (r.ok) {
+    toast(`Chapter "${displayName}" added ✓`, 'success');
+    document.getElementById('ch-slug').value    = '';
+    document.getElementById('ch-display').value = '';
+    document.getElementById('ch-order').value   = '1';
+  } else {
+    toast(r.data?.message || 'Failed to add chapter', 'error');
+  }
+}
+
+// ── Upload PDF ────────────────────────────────────────────────────────────────
+
+async function loadSubjectsForUpload() {
+  const grade = document.getElementById('up-grade').value;
+  const sel   = document.getElementById('up-subject');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  document.getElementById('up-chapter').innerHTML = '<option value="">— Select subject first —</option>';
+  if (!grade) return;
+
+  const r = await api('GET', `/syllabus/catalog/subjects?grade=${grade}`);
+  const items = r.ok ? (r.data.subjects || []) : [];
+  sel.innerHTML = items.length
+    ? `<option value="">— Select subject —</option>` + items.map(s => `<option value="${s.subject}">${s.displayName}</option>`).join('')
+    : `<option value="">No subjects for Grade ${grade}</option>`;
+}
+
+async function loadChaptersForUpload() {
+  const grade   = document.getElementById('up-grade').value;
+  const subject = document.getElementById('up-subject').value;
+  const sel     = document.getElementById('up-chapter');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  if (!grade || !subject) return;
+
+  const r = await api('GET', `/syllabus/catalog/chapters?grade=${grade}&subject=${subject}`);
+  const items = r.ok ? (r.data.chapters || []) : [];
+  sel.innerHTML = items.length
+    ? `<option value="">— Select chapter —</option>` + items.map(c => `<option value="${c.chapter}">${c.displayName}</option>`).join('')
+    : `<option value="">No chapters found</option>`;
+}
+
+function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!file.name.endsWith('.pdf')) { toast('Only PDF files are accepted', 'error'); return; }
+  if (file.size > 50 * 1024 * 1024) { toast('File too large (max 50 MB)', 'error'); return; }
+
+  selectedFile = file;
+  document.getElementById('drop-zone').classList.add('has-file');
+  document.getElementById('file-name').textContent = file.name;
+  document.getElementById('file-size').textContent = `${(file.size / 1024).toFixed(1)} KB`;
+  document.getElementById('file-info').classList.add('show');
+}
+
+function clearFile() {
+  selectedFile = null;
+  document.getElementById('pdf-input').value = '';
+  document.getElementById('drop-zone').classList.remove('has-file');
+  document.getElementById('file-info').classList.remove('show');
+  document.getElementById('up-progress').classList.remove('show');
+}
+
+// Drag & drop
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const fakeInput = { files: [file] };
+    handleFileSelect(fakeInput);
+  }
+});
+
+async function uploadPDF() {
+  const grade   = document.getElementById('up-grade').value;
+  const subject = document.getElementById('up-subject').value;
+  const chapter = document.getElementById('up-chapter').value;
+
+  if (!grade)   { toast('Select a grade',   'error'); return; }
+  if (!subject) { toast('Select a subject', 'error'); return; }
+  if (!chapter) { toast('Select a chapter', 'error'); return; }
+  if (!selectedFile) { toast('Select a PDF file', 'error'); return; }
+
+  const btn = document.getElementById('btn-upload');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Processing...';
+
+  // Show progress
+  const prog  = document.getElementById('up-progress');
+  const bar   = document.getElementById('up-bar');
+  const label = document.getElementById('up-label');
+  prog.classList.add('show');
+
+  // Fake progress animation
+  let pct = 0;
+  const interval = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 8, 88);
+    bar.style.width = pct + '%';
+    label.textContent = pct < 30 ? 'Uploading PDF...' : pct < 60 ? 'Parsing text...' : 'Generating embeddings...';
+  }, 300);
+
+  const form = new FormData();
+  form.append('file',    selectedFile);
+  form.append('grade',   grade);
+  form.append('subject', subject);
+  form.append('chapter', chapter);
+
+  const r = await api('POST', '/syllabus/upload-textbook', form, true);
+
+  clearInterval(interval);
+  bar.style.width = '100%';
+  label.textContent = r.ok ? '✅ Done!' : '❌ Failed';
+
+  btn.disabled = false;
+  btn.innerHTML = '⬆️ Upload & Process PDF';
+
+  if (r.ok) {
+    toast(`PDF uploaded & processed ✓ (${r.data.fileSizeBytes} bytes)`, 'success');
+    uploadLog.unshift({ grade, subject, chapter, file: selectedFile.name, time: new Date().toLocaleTimeString(), ok: true });
+    clearFile();
+  } else {
+    toast(r.data?.message || 'Upload failed', 'error');
+    uploadLog.unshift({ grade, subject, chapter, file: selectedFile.name, time: new Date().toLocaleTimeString(), ok: false });
+  }
+
+  // Render upload log
+  const logEl = document.getElementById('upload-log');
+  logEl.innerHTML = uploadLog.map(u => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:18px">${u.ok ? '✅' : '❌'}</span>
+      <div>
+        <div style="font-size:13px;font-weight:600">${u.file}</div>
+        <div style="font-size:11px;color:var(--muted)">Grade ${u.grade} · ${u.subject} · ${u.chapter} · ${u.time}</div>
+      </div>
+      <span class="badge ${u.ok ? 'badge-green' : 'badge-orange'}" style="margin-left:auto">${u.ok ? 'Success' : 'Failed'}</span>
+    </div>`).join('');
+
+  setTimeout(() => { bar.style.width = '0%'; prog.classList.remove('show'); }, 2000);
+}
+
+// ── View Chunks ───────────────────────────────────────────────────────────────
+
+async function loadSubjectsForChunks() {
+  const grade = document.getElementById('ck-grade').value;
+  const sel   = document.getElementById('ck-subject');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  document.getElementById('ck-chapter').innerHTML = '<option value="">— Subject first —</option>';
+  if (!grade) return;
+
+  const r = await api('GET', `/syllabus/subjects?grade=${grade}`);
+  const items = r.ok ? (r.data.subjects || []) : [];
+  sel.innerHTML = `<option value="">— Select subject —</option>` + items.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+async function loadChaptersForChunks() {
+  const grade   = document.getElementById('ck-grade').value;
+  const subject = document.getElementById('ck-subject').value;
+  const sel     = document.getElementById('ck-chapter');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  if (!grade || !subject) return;
+
+  const r = await api('GET', `/syllabus/chapters?grade=${grade}&subject=${subject}`);
+  const items = r.ok ? (r.data.chapters || []) : [];
+  sel.innerHTML = `<option value="">— Select chapter —</option>` + items.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+async function loadChunks() {
+  const grade   = document.getElementById('ck-grade').value;
+  const subject = document.getElementById('ck-subject').value;
+  const chapter = document.getElementById('ck-chapter').value;
+
+  if (!grade || !subject || !chapter) { toast('Select grade, subject and chapter', 'error'); return; }
+
+  const list = document.getElementById('chunks-list');
+  list.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+
+  const r = await api('GET', `/syllabus/chunks?grade=${grade}&subject=${subject}&chapter=${chapter}`);
+
+  document.getElementById('chunks-title').textContent = `📦 Chunks — ${r.data.total || 0} found`;
+
+  if (!r.ok || !r.data.chunks || r.data.chunks.length === 0) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><p>No chunks found. Upload a PDF first.</p></div>';
+    return;
+  }
+
+  list.innerHTML = r.data.chunks.map(c => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="badge badge-purple">#${c.chunk_order}</span>
+        <span style="font-size:11px;color:var(--muted)">${c.id}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text);line-height:1.6">${c.content_preview}</div>
+    </div>`).join('');
+}
+
+// ── RAG Search ────────────────────────────────────────────────────────────────
+
+async function ragSearch() {
+  const query   = document.getElementById('rag-query').value.trim();
+  const grade   = document.getElementById('rag-grade').value;
+  const subject = document.getElementById('rag-subject').value.trim();
+  const limit   = document.getElementById('rag-limit').value || 3;
+
+  if (!query || !grade || !subject) { toast('Query, grade and subject are required', 'error'); return; }
+
+  const results = document.getElementById('rag-results');
+  results.innerHTML = '<div class="empty"><div class="spinner"></div><p style="margin-top:8px">Generating embeddings & searching...</p></div>';
+
+  const r = await api('GET', `/syllabus/search?query=${encodeURIComponent(query)}&grade=${grade}&subject=${subject}&limit=${limit}`);
+
+  if (!r.ok || !r.data.results || r.data.results.length === 0) {
+    results.innerHTML = '<div class="empty"><p>No results found. Make sure chunks are uploaded.</p></div>';
+    return;
+  }
+
+  results.innerHTML = r.data.results.map((c, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span class="badge badge-blue">#${i + 1}</span>
+        <span class="badge badge-green">${c.chapter}</span>
+        <span class="badge badge-purple">chunk ${c.chunk_order}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${c.content}</div>
+    </div>`).join('');
+}
+
+// ── Seed Demo ─────────────────────────────────────────────────────────────────
+
+async function seedDemo() {
+  const el = document.getElementById('seed-result');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div><p style="margin-top:8px">Seeding demo data...</p></div>';
+
+  const r = await api('POST', '/syllabus/seed');
+
+  if (r.ok) {
+    toast('Demo data seeded successfully ✓', 'success');
+    el.innerHTML = `
+      <div style="background:rgba(35,134,54,0.1);border:1px solid var(--green);border-radius:8px;padding:16px">
+        <div style="font-weight:700;color:#3fb950;margin-bottom:8px">✅ Seed Complete</div>
+        <div style="font-size:13px">Seeded: <strong>${(r.data.seeded||[]).length}</strong> chapters · Skipped: <strong>${(r.data.skipped||[]).length}</strong></div>
+        <pre style="font-size:11px;color:var(--muted);margin-top:10px;overflow:auto">${JSON.stringify(r.data, null, 2)}</pre>
+      </div>`;
+  } else {
+    toast('Seed failed', 'error');
+    el.innerHTML = `<pre style="color:var(--red);font-size:12px">${JSON.stringify(r.data, null, 2)}</pre>`;
+  }
+}
+
+async function clearSeed() {
+  if (!confirm('Delete all demo seeded data?')) return;
+  const r = await api('DELETE', '/syllabus/seed');
+  if (r.ok) toast(`Cleared ${r.data.deleted} records`, 'success');
+  else      toast('Clear failed', 'error');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+pingServer();
+loadDashboard();
+</script>
+</body>
+</html>

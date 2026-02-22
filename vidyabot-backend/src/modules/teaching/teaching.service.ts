@@ -62,6 +62,7 @@ export class TeachingService {
         subject: string,
         chapter: string,
         recentMessages: Message[] = [],
+        forceRegenerate = false,   // ← new param
     ): Promise<TeachingSessionResult> {
         // 1. Load student
         const student = await this.studentsService.getProfile(studentId);
@@ -75,37 +76,49 @@ export class TeachingService {
             cluster = this.capabilityService.getClusterForStudent(studentId, student.capability_score);
         }
 
+        console.log('📚 ════════════════════════════════════════════');
+        console.log('📚  TEACHING SESSION');
+        console.log(`📚  studentId      : ${studentId}`);
+        console.log(`📚  subject        : ${subject}`);
+        console.log(`📚  chapter        : ${chapter}`);
+        console.log(`📚  cluster        : ${cluster}`);
+        console.log(`📚  forceRegenerate: ${forceRegenerate}`);
+        console.log('📚 ════════════════════════════════════════════');
+
         this.logger.log(
-            `Starting teaching session for student ${studentId}, cluster=${cluster}, subject=${subject}, chapter=${chapter}`,
+            `Starting teaching session for student ${studentId}, cluster=${cluster}, subject=${subject}, chapter=${chapter}, forceRegenerate=${forceRegenerate}`,
         );
 
-        const { data: cachedBlock, error: cacheError } = await this.supabase
-            .from('teaching_blocks')
-            .select('*')
-            .eq('grade', student.grade)
-            .eq('subject', subject)
-            .eq('chapter', chapter)
-            .eq('capability_cluster', cluster)
-            .limit(1)
-            .single();
+        // 3. Check cache — skip if forceRegenerate is true (simplify button)
+        if (!forceRegenerate) {
+            const { data: cachedBlock, error: cacheError } = await this.supabase
+                .from('teaching_blocks')
+                .select('*')
+                .eq('grade', student.grade)
+                .eq('subject', subject)
+                .eq('chapter', chapter)
+                .eq('capability_cluster', cluster)
+                .limit(1)
+                .single();
 
-        if (cachedBlock && !cacheError) {
-            this.logger.log(`Cache HIT for teaching block (id=${cachedBlock.id}), returning immediately`);
-            const parsed = typeof cachedBlock.content === 'string'
-                ? JSON.parse(cachedBlock.content)
-                : cachedBlock.content as TeachingResponse;
-            return {
-                block: cachedBlock as TeachingBlock,
-                content: parsed,
-                fromCache: true,
-            };
+            if (cachedBlock && !cacheError) {
+                this.logger.log(`Cache HIT for teaching block (id=${cachedBlock.id}), returning immediately`);
+                console.log(`📚  Cache HIT — blockId: ${cachedBlock.id}`);
+                const parsed = typeof cachedBlock.content === 'string'
+                    ? JSON.parse(cachedBlock.content)
+                    : cachedBlock.content as TeachingResponse;
+                return {
+                    block: cachedBlock as TeachingBlock,
+                    content: parsed,
+                    fromCache: true,
+                };
+            }
+        } else {
+            this.logger.log(`Cache SKIPPED (forceRegenerate=true) — generating fresh simplified content`);
+            console.log(`📚  Cache SKIPPED — generating fresh content for cluster=${cluster}`);
         }
 
-        // 4. Cache miss — fetch syllabus via RAG
-        // Use a rich query string so the embedding search finds the most relevant chunks:
-        // subject + chapter name + intent = much better cosine similarity match
-        this.logger.log(`Cache MISS — fetching syllabus via RAG and generating via AI`);
-
+        // 4. Cache miss OR forced regeneration — fetch syllabus via RAG
         const ragQuery = `${subject} ${chapter} key concepts explanation for grade ${student.grade} student`;
 
         let syllabusChunks = await this.syllabusService.searchRelevantChunks(
@@ -115,7 +128,6 @@ export class TeachingService {
             6,
         );
 
-        // Fallback if RAG returned nothing (e.g. pgvector not installed or textbook not uploaded)
         if (syllabusChunks.length === 0) {
             syllabusChunks = await this.syllabusService.getChunks(
                 student.grade,
@@ -137,7 +149,7 @@ export class TeachingService {
             cluster,
         );
 
-        // 5. Save new teaching block to DB
+        // 5. Save new teaching block to DB (always save — even for simplify so we track versions)
         const { data: savedBlock, error: saveError } = await this.supabase
             .from('teaching_blocks')
             .insert({
@@ -145,7 +157,7 @@ export class TeachingService {
                 subject,
                 chapter,
                 capability_cluster: cluster,
-                content: JSON.stringify(aiResponse)
+                content: JSON.stringify(aiResponse),
             })
             .select()
             .single();
@@ -155,7 +167,7 @@ export class TeachingService {
             throw new Error('Failed to save teaching session');
         }
 
-        this.logger.log(`Saved new teaching block (id=${savedBlock.id})`);
+        this.logger.log(`Saved new teaching block (id=${savedBlock.id}) cluster=${cluster}`);
         return {
             block: savedBlock as TeachingBlock,
             content: aiResponse,

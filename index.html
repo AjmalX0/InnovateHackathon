@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VidyaBot Socket Tester</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
+    h1 { color: #58a6ff; margin-bottom: 20px; font-size: 22px; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .card h2 { color: #79c0ff; font-size: 14px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+
+    input, textarea, select {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    textarea { resize: vertical; min-height: 80px; }
+
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 13px;
+      cursor: pointer;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .btn-green  { background: #238636; color: #fff; }
+    .btn-red    { background: #da3633; color: #fff; }
+    .btn-blue   { background: #1f6feb; color: #fff; }
+    .btn-orange { background: #bd561d; color: #fff; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #log {
+      background: #010409;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px;
+      height: 360px;
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.6;
+      margin-top: 16px;
+    }
+    .log-info    { color: #58a6ff; }
+    .log-success { color: #3fb950; }
+    .log-error   { color: #f85149; }
+    .log-warn    { color: #d29922; }
+    .log-event   { color: #bc8cff; }
+    .log-data    { color: #8b949e; margin-left: 16px; }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: #da3633;
+    }
+    .status-dot.connected { background: #3fb950; }
+    #status-text { font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<h1>🤖 VidyaBot — Socket.IO Tester</h1>
+
+<div class="grid">
+
+  <!-- Connection Card -->
+  <div class="card">
+    <h2>🔌 Connection</h2>
+    <input id="serverUrl" value="http://localhost:3000" placeholder="Server URL" />
+    <div style="margin-bottom:12px">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="status-text">Disconnected</span>
+    </div>
+    <button class="btn-green" id="btnConnect">Connect</button>
+    <button class="btn-red"   id="btnDisconnect" disabled>Disconnect</button>
+  </div>
+
+  <!-- Start Learning Card -->
+  <div class="card">
+    <h2>📚 start_learning</h2>
+    <input id="sl-studentId" placeholder="studentId (UUID)" />
+    <input id="sl-subject"   placeholder='subject e.g. "science"' value="science" />
+    <input id="sl-chapter"   placeholder='chapter e.g. "chapter-1-life-processes"' value="chapter-1-life-processes" />
+    <button class="btn-blue" id="btnStartLearning" disabled>Emit start_learning</button>
+  </div>
+
+  <!-- Ask Doubt (Text) Card -->
+  <div class="card">
+    <h2>💬 ask_doubt — Text</h2>
+    <input id="ad-studentId" placeholder="studentId (UUID)" />
+    <input id="ad-subject"   placeholder="subject" value="science" />
+    <input id="ad-chapter"   placeholder="chapter" value="chapter-1-life-processes" />
+    <textarea id="ad-text" placeholder="Type your doubt here...">What is photosynthesis?</textarea>
+    <button class="btn-blue" id="btnAskDoubt" disabled>Emit ask_doubt (text)</button>
+  </div>
+
+  <!-- Simplify Card -->
+  <div class="card">
+    <h2>🔽 simplify_requested</h2>
+    <input id="sim-studentId" placeholder="studentId (UUID)" />
+    <input id="sim-subject"   placeholder="subject" value="science" />
+    <input id="sim-chapter"   placeholder="chapter" value="chapter-1-life-processes" />
+    <button class="btn-orange" id="btnSimplify" disabled>Emit simplify_requested</button>
+  </div>
+
+</div>
+
+<!-- Log -->
+<div id="log"><span class="log-info">// Logs will appear here after you connect...</span></div>
+<div style="margin-top:8px">
+  <button class="btn-red" onclick="clearLog()">Clear Log</button>
+</div>
+
+<script>
+  let socket = null;
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  function ts() {
+    return new Date().toLocaleTimeString();
+  }
+
+  function log(msg, cls = 'log-info') {
+    const el = document.getElementById('log');
+    el.innerHTML += `<div class="${cls}">[${ts()}] ${msg}</div>`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function logJSON(label, obj) {
+    log(label, 'log-event');
+    log(JSON.stringify(obj, null, 2).replace(/\n/g, '<br>').replace(/ /g, '&nbsp;'), 'log-data');
+  }
+
+  function clearLog() {
+    document.getElementById('log').innerHTML = '';
+  }
+
+  function setConnected(yes) {
+    document.getElementById('statusDot').className  = 'status-dot' + (yes ? ' connected' : '');
+    document.getElementById('status-text').textContent = yes ? '✅ Connected' : '❌ Disconnected';
+    document.getElementById('btnConnect').disabled    = yes;
+    document.getElementById('btnDisconnect').disabled = !yes;
+    ['btnStartLearning','btnAskDoubt','btnSimplify'].forEach(id => {
+      document.getElementById(id).disabled = !yes;
+    });
+  }
+
+  // ── Connect ──────────────────────────────────────────────────────────────────
+
+  document.getElementById('btnConnect').onclick = () => {
+    const url = document.getElementById('serverUrl').value.trim();
+    log(`Connecting to ${url} ...`, 'log-info');
+
+    socket = io(url, { transports: ['websocket', 'polling'] });
+
+    socket.on('connect', () => {
+      log(`🟢 CONNECTED  — socketId: ${socket.id}`, 'log-success');
+      setConnected(true);
+    });
+
+    socket.on('disconnect', (reason) => {
+      log(`🔴 DISCONNECTED — reason: ${reason}`, 'log-error');
+      setConnected(false);
+    });
+
+    socket.on('connect_error', (err) => {
+      log(`❌ CONNECTION ERROR — ${err.message}`, 'log-error');
+    });
+
+    // ── Listen for server events ────────────────────────────────────────────
+
+    socket.on('lesson_started', (data) => {
+      logJSON('✅  lesson_started received:', data);
+    });
+
+    socket.on('doubt_answered', (data) => {
+      logJSON('✅  doubt_answered received:', data);
+    });
+
+    socket.on('error', (data) => {
+      logJSON('❌  error received:', data);
+    });
+  };
+
+  // ── Disconnect ───────────────────────────────────────────────────────────────
+
+  document.getElementById('btnDisconnect').onclick = () => {
+    if (socket) { socket.disconnect(); socket = null; }
+  };
+
+  // ── start_learning ───────────────────────────────────────────────────────────
+
+  document.getElementById('btnStartLearning').onclick = () => {
+    const payload = {
+      studentId : document.getElementById('sl-studentId').value.trim(),
+      subject   : document.getElementById('sl-subject').value.trim(),
+      chapter   : document.getElementById('sl-chapter').value.trim(),
+    };
+
+    if (!payload.studentId) { log('⚠️  studentId is required', 'log-warn'); return; }
+    logJSON('📤  Emitting start_learning:', payload);
+    socket.emit('start_learning', payload);
+  };
+
+  // ── ask_doubt (text) ─────────────────────────────────────────────────────────
+
+  document.getElementById('btnAskDoubt').onclick = () => {
+    const payload = {
+      studentId : document.getElementById('ad-studentId').value.trim(),
+      subject   : document.getElementById('ad-subject').value.trim(),
+      chapter   : document.getElementById('ad-chapter').value.trim(),
+      inputType : 'text',
+      text      : document.getElementById('ad-text').value.trim(),
+    };
+
+    if (!payload.studentId) { log('⚠️  studentId is required', 'log-warn'); return; }
+    if (!payload.text)      { log('⚠️  doubt text is required', 'log-warn'); return; }
+    logJSON('📤  Emitting ask_doubt:', payload);
+    socket.emit('ask_doubt', payload);
+  };
+
+  // ── simplify_requested ───────────────────────────────────────────────────────
+
+  document.getElementById('btnSimplify').onclick = () => {
+    const payload = {
+      studentId : document.getElementById('sim-studentId').value.trim(),
+      subject   : document.getElementById('sim-subject').value.trim(),
+      chapter   : document.getElementById('sim-chapter').value.trim(),
+    };
+
+    if (!payload.studentId) { log('⚠️  studentId is required', 'log-warn'); return; }
+    logJSON('📤  Emitting simplify_requested:', payload);
+    socket.emit('simplify_requested', payload);
+  };
+</script>
+</body>
+</html>
