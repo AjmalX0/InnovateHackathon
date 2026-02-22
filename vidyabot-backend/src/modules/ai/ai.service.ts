@@ -173,4 +173,110 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.
             throw new InternalServerErrorException('Failed to generate doubt response from AI');
         }
     }
+    async generateStudyNotes(
+        student: StudentProfile,
+        chatMessages: { role: string; content: string }[],
+        language: 'ml' | 'en' = 'ml'
+    ): Promise<{ topic: string; content: string }> {
+        const languageInstruction =
+            language === 'ml'
+                ? 'Generate the notes ENTIRELY in Malayalam (മലയാളം) script.'
+                : 'Generate the notes in English.';
+
+        const chatTranscript = chatMessages
+            .map(m => `${m.role.toUpperCase()}: ${m.content}`)
+            .join('\n');
+
+        const prompt = `
+You are an expert AI tutor for Kerala school students.
+
+Student Information:
+- Name: ${student.name}
+- Grade: ${student.grade}
+
+Language Instruction: ${languageInstruction}
+
+Chat Transcript between Student and Tutor:
+${chatTranscript}
+
+Based on this recent chat transcript, generate comprehensive markdown study notes for the student.
+Identify the main topic discussed and provide clear notes with headings, bullet points, and key takeaways.
+Return a valid JSON object with EXACTLY these fields:
+{
+  "topic": "The main topic/chapter discussed",
+  "content": "The generated markdown study notes"
+}
+
+Return ONLY the JSON object, no markdown formatting blocks containing the JSON.
+`.trim();
+
+        try {
+            const result = await this.model.generateContent(prompt);
+            const text = result.response.text().trim();
+            // Handle cases where the model wraps JSON in markdown blocks despite our instructions
+            const jsonStr = text.startsWith('\`\`\`json')
+                ? text.replace(/^\`\`\`json\n/, '').replace(/\n\`\`\`$/, '')
+                : text;
+
+            const parsed = JSON.parse(jsonStr) as { topic: string; content: string };
+            this.logger.log(`Generated study notes for student ${student.id}`);
+            return parsed;
+        } catch (error) {
+            this.logger.error(`AI study notes generation failed: ${(error as Error).message}`);
+            throw new InternalServerErrorException('Failed to generate study notes from AI');
+        }
+    }
+
+    async generateQuiz(
+        student: StudentProfile,
+        topic: string,
+        context: string,
+        language: 'ml' | 'en' = 'ml',
+        questionCount: number = 5
+    ): Promise<any[]> {
+        const languageInstruction =
+            language === 'ml'
+                ? 'Generate the quiz ENTIRELY in Malayalam (മലയാളം) script.'
+                : 'Generate the quiz in English.';
+
+        const prompt = `
+You are an expert AI tutor for Kerala school students.
+
+Student Information:
+- Name: ${student.name}
+- Grade: ${student.grade}
+
+Language Instruction: ${languageInstruction}
+
+Topic: ${topic}
+Context Material: ${context}
+
+Generate a short multiple-choice quiz of EXACTLY ${questionCount} questions based on the topic and context provided. Make sure the difficulty is appropriate for the student's grade.
+Return a valid JSON array where each element has EXACTLY these fields:
+{
+  "question_text": "The text of the question",
+  "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+  "correct_answer_index": 0, // Integer index (0-3) of the correct option
+  "explanation": "Brief explanation of why the answer is correct"
+}
+
+Return ONLY the JSON array, no markdown formatting blocks containing the JSON.
+`.trim();
+
+        try {
+            const result = await this.model.generateContent(prompt);
+            const text = result.response.text().trim();
+
+            const jsonStr = text.startsWith('\`\`\`json')
+                ? text.replace(/^\`\`\`json\n/, '').replace(/\n\`\`\`$/, '')
+                : text;
+
+            const parsed = JSON.parse(jsonStr) as any[];
+            this.logger.log(`Generated quiz for student ${student.id} on topic ${topic}`);
+            return parsed;
+        } catch (error) {
+            this.logger.error(`AI quiz generation failed: ${(error as Error).message}`);
+            throw new InternalServerErrorException('Failed to generate quiz from AI');
+        }
+    }
 }

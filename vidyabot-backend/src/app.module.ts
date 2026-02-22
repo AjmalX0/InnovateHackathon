@@ -8,6 +8,9 @@ import { SyllabusModule } from './modules/syllabus/syllabus.module';
 import { SpeechModule } from './modules/speech/speech.module';
 import { CacheModule } from './modules/cache/cache.module';
 import { VidyabotGateway } from './gateway/vidyabot.gateway';
+import { QuizzesModule } from './modules/quizzes/quizzes.module';
+import { TeachersModule } from './modules/teachers/teachers.module';
+import { NotesModule } from './modules/notes/notes.module';
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from './modules/database/database.module';
 @Module({
@@ -21,6 +24,9 @@ import { DatabaseModule } from './modules/database/database.module';
     SyllabusModule,
     SpeechModule,
     CacheModule,
+    NotesModule,
+    TeachersModule,
+    QuizzesModule,
   ],
   providers: [VidyabotGateway],
 })
